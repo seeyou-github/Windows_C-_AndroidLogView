@@ -4,12 +4,11 @@
 
 #include <windows.h>
 
+#include <sstream>
 #include <string>
 #include <vector>
 
 namespace {
-constexpr wchar_t kAdbCommand[] = L"adb logcat -v threadtime";
-
 std::wstring Utf8ToWide(const std::string& text) {
     if (text.empty()) {
         return L"";
@@ -24,6 +23,30 @@ std::wstring Utf8ToWide(const std::string& text) {
     MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
     return wide;
 }
+
+std::wstring Trim(const std::wstring& text) {
+    std::size_t start = 0;
+    while (start < text.size() && iswspace(text[start])) {
+        ++start;
+    }
+    std::size_t end = text.size();
+    while (end > start && iswspace(text[end - 1])) {
+        --end;
+    }
+    return text.substr(start, end - start);
+}
+
+std::wstring BuildLogcatCommand(const AdbLaunchOptions& options) {
+    std::wstring command = L"adb ";
+    if (!options.deviceSerial.empty()) {
+        command += L"-s \"" + options.deviceSerial + L"\" ";
+    }
+    command += L"logcat -v threadtime";
+    if (!options.adbPriorityFilter.empty()) {
+        command += L" " + options.adbPriorityFilter;
+    }
+    return command;
+}
 }  // namespace
 
 AdbClient::AdbClient() : m_running(false), m_processHandle(nullptr), m_threadHandle(nullptr), m_stdoutReadHandle(nullptr) {
@@ -33,11 +56,12 @@ AdbClient::~AdbClient() {
     Stop();
 }
 
-bool AdbClient::Start(const LogCallback& logCallback, const StatusCallback& statusCallback) {
+bool AdbClient::Start(const AdbLaunchOptions& options, const LogCallback& logCallback, const StatusCallback& statusCallback) {
     if (m_running.load()) {
         return true;
     }
 
+    m_launchOptions = options;
     m_logCallback = logCallback;
     m_statusCallback = statusCallback;
     m_running = true;
@@ -64,6 +88,93 @@ void AdbClient::Stop() {
 
 bool AdbClient::IsRunning() const {
     return m_running.load();
+}
+
+std::vector<AdbClient::DeviceInfo> AdbClient::ListDevices() {
+    std::string output;
+    std::vector<DeviceInfo> devices;
+    if (!RunCommandCapture(L"adb devices", output, nullptr)) {
+        return devices;
+    }
+
+    std::wstringstream stream(Utf8ToWide(output));
+    std::wstring line;
+    bool firstLine = true;
+    while (std::getline(stream, line)) {
+        line = Trim(line);
+        if (line.empty()) {
+            continue;
+        }
+        if (firstLine) {
+            firstLine = false;
+            continue;
+        }
+
+        const std::size_t tabPos = line.find(L'\t');
+        if (tabPos == std::wstring::npos) {
+            continue;
+        }
+
+        DeviceInfo info;
+        info.serial = Trim(line.substr(0, tabPos));
+        info.state = Trim(line.substr(tabPos + 1));
+        if (!info.serial.empty()) {
+            devices.push_back(info);
+        }
+    }
+    return devices;
+}
+
+bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode) {
+    SECURITY_ATTRIBUTES sa = {};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    HANDLE readPipe = nullptr;
+    HANDLE writePipe = nullptr;
+    if (!CreatePipe(&readPipe, &writePipe, &sa, 0)) {
+        return false;
+    }
+    SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.hStdOutput = writePipe;
+    si.hStdError = writePipe;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi = {};
+    std::wstring mutableCommand = commandLine;
+    const BOOL started = CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    CloseHandle(writePipe);
+    if (!started) {
+        CloseHandle(readPipe);
+        return false;
+    }
+
+    std::vector<char> buffer(4096);
+    while (true) {
+        DWORD bytesRead = 0;
+        const BOOL ok = ReadFile(readPipe, buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, nullptr);
+        if (!ok || bytesRead == 0) {
+            break;
+        }
+        output.append(buffer.data(), buffer.data() + bytesRead);
+    }
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD processExitCode = 0;
+    GetExitCodeProcess(pi.hProcess, &processExitCode);
+    if (exitCode != nullptr) {
+        *exitCode = processExitCode;
+    }
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    CloseHandle(readPipe);
+    return processExitCode == 0;
 }
 
 void AdbClient::EmitStatus(const std::wstring& text) const {
@@ -96,7 +207,7 @@ void AdbClient::WorkerLoop() {
     si.wShowWindow = SW_HIDE;
 
     PROCESS_INFORMATION pi = {};
-    std::wstring commandLine = kAdbCommand;
+    std::wstring commandLine = BuildLogcatCommand(m_launchOptions);
     const BOOL started = CreateProcessW(
         nullptr,
         commandLine.data(),
@@ -123,7 +234,7 @@ void AdbClient::WorkerLoop() {
     m_threadHandle = pi.hThread;
     m_stdoutReadHandle = readPipe;
 
-    EmitStatus(L"ADB logcat started.");
+        EmitStatus(L"ADB logcat started.");
 
     std::string pending;
     std::vector<char> buffer(64 * 1024);

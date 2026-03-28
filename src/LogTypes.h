@@ -31,3 +31,8 @@ struct FilterOptions {
     std::wstring pidText;
     LogLevel minimumLevel = LogLevel::Verbose;
 };
+
+struct AdbLaunchOptions {
+    std::wstring deviceSerial;
+    std::wstring adbPriorityFilter;
+};

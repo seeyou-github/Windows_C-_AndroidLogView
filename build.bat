@@ -13,7 +13,7 @@ set LDFLAGS=-municode -mwindows -lgdi32 -lcomctl32 -lshell32 -lole32 -loleaut32 
 %CXX% -c src\main.cpp %CXXFLAGS% -o build\main.o
 if errorlevel 1 goto error
 
-%CXX% -c src\MainWindow.cpp %CXXFLAGS% -o build\MainWindow.o
+%CXX% -c src\MainWindowImpl.cpp %CXXFLAGS% -o build\MainWindow.o
 if errorlevel 1 goto error
 
 %CXX% -c src\AdbClient.cpp %CXXFLAGS% -o build\AdbClient.o
@@ -34,11 +34,14 @@ if errorlevel 1 goto error
 %CXX% -c src\ResourceStrings.cpp %CXXFLAGS% -o build\ResourceStrings.o
 if errorlevel 1 goto error
 
+%CXX% -c src\Config.cpp %CXXFLAGS% -o build\Config.o
+if errorlevel 1 goto error
+
 %RC% res\resource.rc -O coff -o build\resource.o
 if errorlevel 1 goto error
 
 echo Linking...
-%CXX% build\main.o build\MainWindow.o build\AdbClient.o build\DarkMode.o build\LogParser.o build\LogBuffer.o build\FilterEngine.o build\ResourceStrings.o build\resource.o -o build\AndroidLogViewer.exe %LDFLAGS%
+%CXX% build\main.o build\MainWindow.o build\AdbClient.o build\DarkMode.o build\LogParser.o build\LogBuffer.o build\FilterEngine.o build\ResourceStrings.o build\Config.o build\resource.o -o build\AndroidLogViewer.exe %LDFLAGS%
 if errorlevel 1 goto error
 
 echo ===== Build succeeded =====

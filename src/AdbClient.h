@@ -2,6 +2,8 @@
 
 #include "LogTypes.h"
 
+#include <windows.h>
+
 #include <atomic>
 #include <functional>
 #include <string>
@@ -13,14 +15,21 @@ public:
     using LogCallback = std::function<void(std::vector<LogEntry>)>;
     using StatusCallback = std::function<void(const std::wstring&)>;
 
+    struct DeviceInfo {
+        std::wstring serial;
+        std::wstring state;
+    };
+
     AdbClient();
     ~AdbClient();
 
-    bool Start(const LogCallback& logCallback, const StatusCallback& statusCallback);
+    bool Start(const AdbLaunchOptions& options, const LogCallback& logCallback, const StatusCallback& statusCallback);
     void Stop();
     bool IsRunning() const;
+    static std::vector<DeviceInfo> ListDevices();
 
 private:
+    static bool RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode = nullptr);
     void WorkerLoop();
     void EmitStatus(const std::wstring& text) const;
 
@@ -28,6 +37,7 @@ private:
     std::thread m_worker;
     LogCallback m_logCallback;
     StatusCallback m_statusCallback;
+    AdbLaunchOptions m_launchOptions;
     void* m_processHandle;
     void* m_threadHandle;
     void* m_stdoutReadHandle;
