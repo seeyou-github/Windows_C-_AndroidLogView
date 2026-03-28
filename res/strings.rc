@@ -33,4 +33,5 @@ BEGIN
     IDS_STATUS_CLEARED  "日志已清空"
     IDS_STATUS_PAUSED   "已暂停接收"
     IDS_STATUS_EXPORTED "日志已导出"
+    IDS_DEVICE_ADD      "Add device..."
 END

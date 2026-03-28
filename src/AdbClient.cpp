@@ -125,6 +125,17 @@ std::vector<AdbClient::DeviceInfo> AdbClient::ListDevices() {
     return devices;
 }
 
+bool AdbClient::ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText) {
+    std::string output;
+    DWORD exitCode = 0;
+    const bool ok = RunCommandCapture(L"adb connect " + address, output, &exitCode);
+    statusText = Utf8ToWide(output);
+    if (statusText.empty()) {
+        statusText = ok ? L"adb connect succeeded." : L"adb connect failed.";
+    }
+    return ok && exitCode == 0;
+}
+
 bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode) {
     SECURITY_ATTRIBUTES sa = {};
     sa.nLength = sizeof(sa);
@@ -269,12 +280,17 @@ void AdbClient::WorkerLoop() {
                 batch.push_back(LogParser::ParseThreadTimeLine(wideLine, seq++));
             }
 
-            if (batch.size() >= 256 && m_logCallback) {
+            if (batch.size() >= 64 && m_logCallback) {
                 m_logCallback(batch);
                 batch.clear();
             }
 
             lineStart = newlinePos + 1;
+        }
+
+        if (!batch.empty() && m_logCallback) {
+            m_logCallback(batch);
+            batch.clear();
         }
     }
 

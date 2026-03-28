@@ -8,6 +8,7 @@
 #include <commctrl.h>
 
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 class MainWindow {
@@ -25,6 +26,7 @@ private:
     void CreateControls();
     void LayoutControls(int width, int height);
     void InitializeListView();
+    void UpdateColumnWidths(int listWidth);
     void ApplyThemeToChildren();
 
     void OnCreate();
@@ -54,12 +56,29 @@ private:
     void PaintCustomChrome(HDC hdc);
     void DrawButton(LPDRAWITEMSTRUCT drawInfo);
     void DrawControlBorder(HDC hdc, HWND control, bool focused);
+    void DrawEditCueBanner(HWND control, HDC hdc);
+    void DrawDropdownButton(LPDRAWITEMSTRUCT drawInfo);
+    void DrawPopupListItem(LPDRAWITEMSTRUCT drawInfo);
+    void CopySelectedLogs();
+    void SaveKnownDevice(const std::wstring& address);
+    void LoadKnownDevices();
+    void ShowPickerPopup(HWND picker);
+    void HidePickerPopup();
+    void ApplyPopupSelection();
+    std::wstring GetSelectedDeviceText() const;
+    std::wstring GetSelectedLevelText() const;
 
     LRESULT HandleNotify(LPARAM lParam);
     LRESULT HandleCustomDraw(NMLVCUSTOMDRAW* drawInfo);
     INT_PTR HandleControlColor(HDC hdc, HWND control);
     LRESULT HandleAppStatusMessage(LPARAM lParam);
     LRESULT HandleDrawItem(WPARAM wParam, LPARAM lParam);
+    LRESULT HandleMeasureItem(LPARAM lParam);
+    LRESULT HandleContextMenu(WPARAM wParam, LPARAM lParam);
+    LRESULT HandleListKeyDown(MSG* msg);
+    static LRESULT CALLBACK EditSubclassProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR refData);
+    static LRESULT CALLBACK ListSubclassProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR refData);
+    static LRESULT CALLBACK PopupListSubclassProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR refData);
 
     HINSTANCE m_instance;
     HWND m_hWnd;
@@ -77,6 +96,9 @@ private:
     HWND m_hClearButton;
     HWND m_hListView;
     HWND m_hStatusLabel;
+    HWND m_hPopupHost;
+    HWND m_hPopupList;
+    HWND m_hActivePicker;
 
     HFONT m_uiFont;
     HFONT m_monoFont;
@@ -94,5 +116,11 @@ private:
     LogBuffer m_logBuffer;
     FilterOptions m_filters;
     std::vector<std::size_t> m_visibleIndexes;
+    std::vector<std::wstring> m_knownDevices;
+    std::unordered_map<HWND, std::wstring> m_editCueTexts;
+    std::vector<std::wstring> m_deviceItems;
+    std::vector<std::wstring> m_levelItems;
+    int m_selectedDeviceIndex;
+    int m_selectedLevelIndex;
     bool m_paused;
 };

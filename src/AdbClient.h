@@ -27,6 +27,7 @@ public:
     void Stop();
     bool IsRunning() const;
     static std::vector<DeviceInfo> ListDevices();
+    static bool ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText);
 
 private:
     static bool RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode = nullptr);

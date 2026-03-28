@@ -2,31 +2,81 @@
 
 #include <windows.h>
 
-#include <fstream>
-#include <locale>
 #include <sstream>
 
 namespace {
+std::wstring Utf8ToWide(const std::string& text) {
+    if (text.empty()) {
+        return L"";
+    }
+    const int length = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (length <= 0) {
+        return L"";
+    }
+    std::wstring wide(static_cast<std::size_t>(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
+    return wide;
+}
+
+std::string WideToUtf8(const std::wstring& text) {
+    if (text.empty()) {
+        return "";
+    }
+    const int length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (length <= 0) {
+        return "";
+    }
+    std::string utf8(static_cast<std::size_t>(length), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), utf8.data(), length, nullptr, nullptr);
+    return utf8;
+}
+
 std::wstring ReadFileText(const std::wstring& path) {
-    std::wifstream input(path.c_str());
-    input.imbue(std::locale(".UTF-8"));
-    if (!input) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                              nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
         return L"";
     }
 
-    std::wstringstream buffer;
-    buffer << input.rdbuf();
-    return buffer.str();
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0) {
+        CloseHandle(file);
+        return L"";
+    }
+
+    std::string bytes(static_cast<std::size_t>(size.QuadPart), '\0');
+    DWORD readBytes = 0;
+    const BOOL ok = ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &readBytes, nullptr);
+    CloseHandle(file);
+    if (!ok) {
+        return L"";
+    }
+
+    if (readBytes >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF && static_cast<unsigned char>(bytes[1]) == 0xBB &&
+        static_cast<unsigned char>(bytes[2]) == 0xBF) {
+        bytes.erase(0, 3);
+    } else if (readBytes < bytes.size()) {
+        bytes.resize(readBytes);
+    }
+
+    return Utf8ToWide(bytes);
 }
 
 bool WriteFileText(const std::wstring& path, const std::wstring& content) {
-    std::wofstream output(path.c_str(), std::ios::trunc);
-    output.imbue(std::locale(".UTF-8"));
-    if (!output) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
         return false;
     }
-    output << content;
-    return output.good();
+
+    const std::string utf8 = WideToUtf8(content);
+    const unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+    DWORD written = 0;
+    BOOL ok = WriteFile(file, bom, 3, &written, nullptr);
+    if (ok && !utf8.empty()) {
+        ok = WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+    }
+    CloseHandle(file);
+    return ok == TRUE;
 }
 }  // namespace
 
