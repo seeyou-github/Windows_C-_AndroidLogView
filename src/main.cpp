@@ -1,0 +1,65 @@
+#include "DarkMode.h"
+#include "MainWindow.h"
+#include "ResourceStrings.h"
+
+#include <commctrl.h>
+#include <windows.h>
+
+#include "../res/resource.h"
+
+namespace {
+HBRUSH g_classBrush = nullptr;
+}
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    INITCOMMONCONTROLSEX icc = {};
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_WIN95_CLASSES | ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES;
+    InitCommonControlsEx(&icc);
+
+    g_classBrush = CreateSolidBrush(DarkMode::kBackground);
+
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(wc);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = MainWindow::WindowProc;
+    wc.hInstance = instance;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.hbrBackground = g_classBrush;
+    wc.lpszClassName = L"AndroidLogViewerMainWindow";
+
+    if (!RegisterClassExW(&wc)) {
+        return 1;
+    }
+
+    const int clientWidth = 1380;
+    const int clientHeight = 860;
+    RECT rect = {0, 0, clientWidth, clientHeight};
+    AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, FALSE, 0);
+
+    RECT workArea = {};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
+    const int windowWidth = rect.right - rect.left;
+    const int windowHeight = rect.bottom - rect.top;
+    const int x = workArea.left + ((workArea.right - workArea.left) - windowWidth) / 2;
+    const int y = workArea.top + ((workArea.bottom - workArea.top) - windowHeight) / 2;
+
+    MainWindow window(instance);
+    const std::wstring title = ResourceStrings::Load(instance, IDS_APP_TITLE);
+    if (!window.Create(x, y, windowWidth, windowHeight, title.c_str())) {
+        DeleteObject(g_classBrush);
+        return 1;
+    }
+
+    ShowWindow(window.Window(), showCommand);
+    UpdateWindow(window.Window());
+
+    MSG msg = {};
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+
+    DeleteObject(g_classBrush);
+    return static_cast<int>(msg.wParam);
+}

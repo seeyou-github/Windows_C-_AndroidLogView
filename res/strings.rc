@@ -1,0 +1,28 @@
+#pragma code_page(65001)
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE       "安卓 ADB 日志查看器"
+    IDS_BUTTON_START    "开始"
+    IDS_BUTTON_STOP     "停止"
+    IDS_BUTTON_CLEAR    "清空"
+    IDS_HINT_KEYWORD    "关键词过滤"
+    IDS_HINT_TAG        "Tag 过滤"
+    IDS_HINT_PID        "PID 过滤"
+    IDS_LEVEL_ALL       "全部级别"
+    IDS_LEVEL_VERBOSE   "Verbose+"
+    IDS_LEVEL_DEBUG     "Debug+"
+    IDS_LEVEL_INFO      "Info+"
+    IDS_LEVEL_WARN      "Warn+"
+    IDS_LEVEL_ERROR     "Error+"
+    IDS_LEVEL_FATAL     "Fatal"
+    IDS_COLUMN_TIME     "时间"
+    IDS_COLUMN_LEVEL    "级别"
+    IDS_COLUMN_PID      "PID"
+    IDS_COLUMN_TAG      "Tag"
+    IDS_COLUMN_MESSAGE  "日志内容"
+    IDS_STATUS_READY    "就绪"
+    IDS_STATUS_STARTING "正在启动 ADB 日志采集"
+    IDS_STATUS_STOPPED  "已停止"
+    IDS_STATUS_CLEARED  "日志已清空"
+END
