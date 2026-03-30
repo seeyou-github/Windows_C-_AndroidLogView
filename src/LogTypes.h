@@ -2,6 +2,16 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+
+struct FilterPattern {
+    std::wstring text;
+    bool wildcard = false;
+};
+
+struct FilterExpression {
+    std::vector<FilterPattern> patterns;
+};
 
 enum class LogLevel {
     Verbose = 0,
@@ -23,6 +33,11 @@ struct LogEntry {
     std::wstring tag;
     std::wstring message;
     std::wstring rawLine;
+    std::wstring pidText;
+    std::wstring levelText;
+    std::wstring tagLower;
+    std::wstring messageLower;
+    std::wstring rawLineLower;
 };
 
 struct FilterOptions {
@@ -31,6 +46,11 @@ struct FilterOptions {
     std::wstring tag;
     std::wstring pidText;
     LogLevel minimumLevel = LogLevel::Verbose;
+    FilterExpression keywordExpression;
+    FilterExpression excludeKeywordExpression;
+    FilterExpression tagExpression;
+    bool hasPidFilter = false;
+    std::uint32_t pidValue = 0;
 };
 
 struct AdbLaunchOptions {

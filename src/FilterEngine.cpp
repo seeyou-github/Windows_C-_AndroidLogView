@@ -67,32 +67,39 @@ std::vector<std::wstring> SplitPatterns(const std::wstring& expression) {
     return patterns;
 }
 
-bool PatternExpressionMatches(const std::wstring& source, const std::wstring& expression) {
-    if (expression.empty()) {
+bool ExpressionMatches(const std::wstring& loweredSource, const FilterExpression& expression) {
+    if (expression.patterns.empty()) {
         return true;
     }
 
-    const std::wstring loweredSource = ToLowerCopy(source);
-    for (const auto& pattern : SplitPatterns(expression)) {
-        if (pattern.find_first_of(L"*?") != std::wstring::npos) {
-            if (WildcardMatch(loweredSource, pattern)) {
+    for (const auto& pattern : expression.patterns) {
+        if (pattern.wildcard) {
+            if (WildcardMatch(loweredSource, pattern.text)) {
                 return true;
             }
             continue;
         }
-        if (loweredSource.find(pattern) != std::wstring::npos) {
+        if (loweredSource.find(pattern.text) != std::wstring::npos) {
             return true;
         }
     }
     return false;
 }
 
-bool EntryMatchesPatternExpression(const LogEntry& entry, const std::wstring& expression) {
-    return PatternExpressionMatches(entry.message, expression) ||
-           PatternExpressionMatches(entry.rawLine, expression) ||
-           PatternExpressionMatches(entry.tag, expression);
+bool EntryMatchesExpression(const LogEntry& entry, const FilterExpression& expression) {
+    return ExpressionMatches(entry.messageLower, expression) ||
+           ExpressionMatches(entry.rawLineLower, expression) ||
+           ExpressionMatches(entry.tagLower, expression);
 }
 }  // namespace
+
+FilterExpression FilterEngine::CompileExpression(const std::wstring& expression) {
+    FilterExpression compiled;
+    for (const auto& pattern : SplitPatterns(expression)) {
+        compiled.patterns.push_back({pattern, pattern.find_first_of(L"*?") != std::wstring::npos});
+    }
+    return compiled;
+}
 
 bool FilterEngine::Matches(const LogEntry& entry, const FilterOptions& options) {
     if (entry.level != LogLevel::Unknown && entry.level < options.minimumLevel) {
@@ -100,25 +107,20 @@ bool FilterEngine::Matches(const LogEntry& entry, const FilterOptions& options) 
     }
 
     if (!options.pidText.empty()) {
-        try {
-            const auto pidValue = static_cast<std::uint32_t>(std::stoul(options.pidText));
-            if (entry.pid != pidValue) {
-                return false;
-            }
-        } catch (...) {
+        if (!options.hasPidFilter || entry.pid != options.pidValue) {
             return false;
         }
     }
 
-    if (!PatternExpressionMatches(entry.tag, options.tag)) {
+    if (!ExpressionMatches(entry.tagLower, options.tagExpression)) {
         return false;
     }
 
-    if (!options.keyword.empty() && !EntryMatchesPatternExpression(entry, options.keyword)) {
+    if (!options.keyword.empty() && !EntryMatchesExpression(entry, options.keywordExpression)) {
         return false;
     }
 
-    if (!options.excludeKeyword.empty() && EntryMatchesPatternExpression(entry, options.excludeKeyword)) {
+    if (!options.excludeKeyword.empty() && EntryMatchesExpression(entry, options.excludeKeywordExpression)) {
         return false;
     }
 

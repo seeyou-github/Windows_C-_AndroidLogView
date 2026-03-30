@@ -16,6 +16,22 @@ std::size_t ReadTokenEnd(const std::wstring& text, std::size_t pos) {
     }
     return pos;
 }
+
+std::wstring ToLowerCopy(const std::wstring& text) {
+    std::wstring lowered = text;
+    for (auto& ch : lowered) {
+        ch = static_cast<wchar_t>(towlower(ch));
+    }
+    return lowered;
+}
+
+void FinalizeEntry(LogEntry& entry) {
+    entry.pidText = std::to_wstring(entry.pid);
+    entry.levelText = LogParser::LevelToText(entry.level);
+    entry.tagLower = ToLowerCopy(entry.tag);
+    entry.messageLower = ToLowerCopy(entry.message);
+    entry.rawLineLower = ToLowerCopy(entry.rawLine);
+}
 }  // namespace
 
 LogEntry LogParser::ParseThreadTimeLine(const std::wstring& line, std::uint64_t seq) {
@@ -24,63 +40,67 @@ LogEntry LogParser::ParseThreadTimeLine(const std::wstring& line, std::uint64_t 
     entry.rawLine = line;
     entry.message = line;
 
-    if (line.size() < 19) {
-        return entry;
-    }
+    do {
+        if (line.size() < 19) {
+            break;
+        }
 
-    entry.timestamp = line.substr(0, 18);
+        entry.timestamp = line.substr(0, 18);
 
-    std::size_t pos = 18;
-    pos = SkipSpaces(line, pos);
+        std::size_t pos = 18;
+        pos = SkipSpaces(line, pos);
 
-    std::size_t pidEnd = ReadTokenEnd(line, pos);
-    if (pidEnd <= pos) {
-        return entry;
-    }
+        std::size_t pidEnd = ReadTokenEnd(line, pos);
+        if (pidEnd <= pos) {
+            break;
+        }
 
-    try {
-        entry.pid = static_cast<std::uint32_t>(std::stoul(line.substr(pos, pidEnd - pos)));
-    } catch (...) {
-        return entry;
-    }
+        try {
+            entry.pid = static_cast<std::uint32_t>(std::stoul(line.substr(pos, pidEnd - pos)));
+        } catch (...) {
+            break;
+        }
 
-    pos = SkipSpaces(line, pidEnd);
-    std::size_t tidEnd = ReadTokenEnd(line, pos);
-    if (tidEnd <= pos) {
-        return entry;
-    }
+        pos = SkipSpaces(line, pidEnd);
+        std::size_t tidEnd = ReadTokenEnd(line, pos);
+        if (tidEnd <= pos) {
+            break;
+        }
 
-    try {
-        entry.tid = static_cast<std::uint32_t>(std::stoul(line.substr(pos, tidEnd - pos)));
-    } catch (...) {
-        return entry;
-    }
+        try {
+            entry.tid = static_cast<std::uint32_t>(std::stoul(line.substr(pos, tidEnd - pos)));
+        } catch (...) {
+            break;
+        }
 
-    pos = SkipSpaces(line, tidEnd);
-    if (pos >= line.size()) {
-        return entry;
-    }
+        pos = SkipSpaces(line, tidEnd);
+        if (pos >= line.size()) {
+            break;
+        }
 
-    entry.level = CharToLevel(line[pos]);
-    ++pos;
-    pos = SkipSpaces(line, pos);
+        entry.level = CharToLevel(line[pos]);
+        ++pos;
+        pos = SkipSpaces(line, pos);
 
-    const std::size_t colonPos = line.find(L':', pos);
-    if (colonPos == std::wstring::npos) {
-        return entry;
-    }
+        const std::size_t colonPos = line.find(L':', pos);
+        if (colonPos == std::wstring::npos) {
+            break;
+        }
 
-    std::size_t tagEnd = colonPos;
-    while (tagEnd > pos && iswspace(line[tagEnd - 1])) {
-        --tagEnd;
-    }
-    entry.tag = line.substr(pos, tagEnd - pos);
+        std::size_t tagEnd = colonPos;
+        while (tagEnd > pos && iswspace(line[tagEnd - 1])) {
+            --tagEnd;
+        }
+        entry.tag = line.substr(pos, tagEnd - pos);
 
-    std::size_t msgPos = colonPos + 1;
-    if (msgPos < line.size() && line[msgPos] == L' ') {
-        ++msgPos;
-    }
-    entry.message = line.substr(msgPos);
+        std::size_t msgPos = colonPos + 1;
+        if (msgPos < line.size() && line[msgPos] == L' ') {
+            ++msgPos;
+        }
+        entry.message = line.substr(msgPos);
+    } while (false);
+
+    FinalizeEntry(entry);
     return entry;
 }
 

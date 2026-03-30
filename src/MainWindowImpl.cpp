@@ -13,6 +13,7 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -825,6 +826,18 @@ void MainWindow::OnExport() {
     const char bom[] = "\xEF\xBB\xBF";
     DWORD written = 0;
     WriteFile(file, bom, 3, &written, nullptr);
+    std::string utf8Chunk;
+    utf8Chunk.reserve(256 * 1024);
+    auto flushChunk = [&]() -> bool {
+        if (utf8Chunk.empty()) {
+            return true;
+        }
+        const bool ok = WriteFile(file, utf8Chunk.data(), static_cast<DWORD>(utf8Chunk.size()), &written, nullptr) != FALSE;
+        if (ok) {
+            utf8Chunk.clear();
+        }
+        return ok;
+    };
     for (std::size_t index : m_visibleIndexes) {
         const LogEntry* entry = m_logBuffer.At(index);
         if (entry == nullptr) continue;
@@ -832,7 +845,19 @@ void MainWindow::OnExport() {
         int bytes = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), static_cast<int>(line.size()), nullptr, 0, nullptr, nullptr);
         std::string utf8(static_cast<std::size_t>(bytes), '\0');
         WideCharToMultiByte(CP_UTF8, 0, line.c_str(), static_cast<int>(line.size()), utf8.data(), bytes, nullptr, nullptr);
-        WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+        if (utf8Chunk.size() + utf8.size() > 256 * 1024 && !flushChunk()) {
+            CloseHandle(file);
+            MessageBoxW(m_hWnd, L"\u5199\u5165\u5bfc\u51fa\u6587\u4ef6\u5931\u8d25\u3002", L"\x5BFC\x51FA\x5931\x8D25", MB_OK | MB_ICONERROR);
+            SetStatus(L"Export failed.");
+            return;
+        }
+        utf8Chunk.append(utf8);
+    }
+    if (!flushChunk()) {
+        CloseHandle(file);
+        MessageBoxW(m_hWnd, L"\u5199\u5165\u5bfc\u51fa\u6587\u4ef6\u5931\u8d25\u3002", L"\x5BFC\x51FA\x5931\x8D25", MB_OK | MB_ICONERROR);
+        SetStatus(L"Export failed.");
+        return;
     }
     CloseHandle(file);
     SetStatus(ResourceStrings::Load(m_instance, IDS_STATUS_EXPORTED) + L": " + path);
@@ -934,18 +959,38 @@ void MainWindow::FlushPendingLogs() {
 
     const bool followBottom = IsNearBottom();
     const std::size_t oldSize = m_logBuffer.Size();
+    const std::size_t oldVisibleSize = m_visibleIndexes.size();
     const std::size_t dropped = m_logBuffer.AppendBatch(batch);
+    const std::size_t oldEntriesRetained = dropped >= oldSize ? 0 : (oldSize - dropped);
+    const std::size_t newSize = m_logBuffer.Size();
+    bool listContentChanged = false;
 
     if (dropped > 0) {
-        RebuildVisibleIndexes(!followBottom);
-    } else {
-        const std::size_t newSize = m_logBuffer.Size();
-        for (std::size_t i = oldSize; i < newSize; ++i) {
-            const LogEntry* entry = m_logBuffer.At(i);
-            if (entry != nullptr && FilterEngine::Matches(*entry, m_filters)) {
-                m_visibleIndexes.push_back(i);
+        std::size_t writeIndex = 0;
+        for (std::size_t readIndex = 0; readIndex < m_visibleIndexes.size(); ++readIndex) {
+            const std::size_t index = m_visibleIndexes[readIndex];
+            if (index >= dropped) {
+                m_visibleIndexes[writeIndex++] = index - dropped;
             }
         }
+        if (writeIndex != m_visibleIndexes.size()) {
+            m_visibleIndexes.resize(writeIndex);
+        }
+        listContentChanged = true;
+    }
+
+    for (std::size_t i = oldEntriesRetained; i < newSize; ++i) {
+        const LogEntry* entry = m_logBuffer.At(i);
+        if (entry != nullptr && FilterEngine::Matches(*entry, m_filters)) {
+            m_visibleIndexes.push_back(i);
+        }
+    }
+
+    if (m_visibleIndexes.size() != oldVisibleSize) {
+        listContentChanged = true;
+    }
+
+    if (listContentChanged) {
         ListView_SetItemCountEx(m_hListView, static_cast<int>(m_visibleIndexes.size()), LVSICF_NOSCROLL);
         InvalidateRect(m_hListView, nullptr, FALSE);
     }
@@ -1036,6 +1081,17 @@ FilterOptions MainWindow::ReadFilterOptions() const {
     options.excludeKeyword = m_excludeKeywordEditControl.GetText();
     options.tag = m_tagEditControl.GetText();
     options.pidText = m_pidEditControl.GetText();
+    options.keywordExpression = FilterEngine::CompileExpression(options.keyword);
+    options.excludeKeywordExpression = FilterEngine::CompileExpression(options.excludeKeyword);
+    options.tagExpression = FilterEngine::CompileExpression(options.tag);
+    if (!options.pidText.empty()) {
+        try {
+            options.pidValue = static_cast<std::uint32_t>(std::stoul(options.pidText));
+            options.hasPidFilter = true;
+        } catch (...) {
+            options.hasPidFilter = false;
+        }
+    }
     switch (m_selectedLevelIndex) {
     case 2:
         options.minimumLevel = LogLevel::Debug;
@@ -1406,8 +1462,8 @@ LRESULT MainWindow::HandleNotify(LPARAM lParam) {
             if ((dispInfo->item.mask & LVIF_TEXT) != 0) {
                 switch (dispInfo->item.iSubItem) {
                 case 0: textBuffer = entry->timestamp; break;
-                case 1: textBuffer = LogParser::LevelToText(entry->level); break;
-                case 2: textBuffer = std::to_wstring(entry->pid); break;
+                case 1: textBuffer = entry->levelText; break;
+                case 2: textBuffer = entry->pidText; break;
                 case 3: textBuffer = entry->tag; break;
                 default: textBuffer = entry->message; break;
                 }
