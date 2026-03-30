@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class Config {
 public:
@@ -17,6 +18,7 @@ public:
 private:
     static std::unordered_map<std::wstring, std::wstring> Parse(const std::wstring& content);
     static std::wstring Serialize(const std::unordered_map<std::wstring, std::wstring>& values);
+    static const std::vector<std::wstring>& OrderedKeys();
 
     std::wstring m_path;
     std::unordered_map<std::wstring, std::wstring> m_values;

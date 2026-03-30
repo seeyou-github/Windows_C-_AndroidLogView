@@ -28,6 +28,7 @@ public:
     bool IsRunning() const;
     static std::vector<DeviceInfo> ListDevices();
     static bool ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText, bool* timedOut = nullptr);
+    static bool RunAdbCommand(const std::wstring& arguments, std::wstring& statusText, DWORD timeoutMs = 5000);
 
 private:
     static bool RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode = nullptr, DWORD timeoutMs = INFINITE,

@@ -2,7 +2,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <sstream>
+#include <vector>
 
 namespace {
 std::wstring Utf8ToWide(const std::string& text) {
@@ -130,8 +132,48 @@ std::unordered_map<std::wstring, std::wstring> Config::Parse(const std::wstring&
 
 std::wstring Config::Serialize(const std::unordered_map<std::wstring, std::wstring>& values) {
     std::wstring output;
-    for (const auto& item : values) {
-        output += item.first + L"=" + item.second + L"\n";
+    std::vector<std::wstring> emittedKeys;
+    emittedKeys.reserve(values.size());
+
+    for (const auto& key : OrderedKeys()) {
+        const auto it = values.find(key);
+        if (it == values.end()) {
+            continue;
+        }
+        output += it->first + L"=" + it->second + L"\n";
+        emittedKeys.push_back(it->first);
     }
+
+    std::vector<std::wstring> remainingKeys;
+    remainingKeys.reserve(values.size());
+    for (const auto& item : values) {
+        if (std::find(emittedKeys.begin(), emittedKeys.end(), item.first) == emittedKeys.end()) {
+            remainingKeys.push_back(item.first);
+        }
+    }
+    std::sort(remainingKeys.begin(), remainingKeys.end());
+    for (const auto& key : remainingKeys) {
+        const auto it = values.find(key);
+        if (it != values.end()) {
+            output += it->first + L"=" + it->second + L"\n";
+        }
+    }
+
     return output;
+}
+
+const std::vector<std::wstring>& Config::OrderedKeys() {
+    static const std::vector<std::wstring> keys = {
+        L"window_width",
+        L"window_height",
+        L"adb_filter",
+        L"keyword",
+        L"tag",
+        L"pid",
+        L"exclude_keyword",
+        L"level",
+        L"export_dir",
+        L"known_devices",
+    };
+    return keys;
 }

@@ -4,10 +4,10 @@ STRINGTABLE
 BEGIN
     IDS_APP_TITLE       "安卓 ADB 日志查看器"
     IDS_BUTTON_START    "开始"
-    IDS_BUTTON_STOP     "停止"
+    IDS_BUTTON_STOP     "停止采集"
     IDS_BUTTON_CLEAR    "清空"
-    IDS_BUTTON_PAUSE    "暂停"
-    IDS_BUTTON_RESUME   "继续"
+    IDS_BUTTON_PAUSE    "暂停显示"
+    IDS_BUTTON_RESUME   "继续显示"
     IDS_BUTTON_EXPORT   "导出"
     IDS_HINT_KEYWORD    "关键词过滤"
     IDS_HINT_TAG        "Tag 过滤"

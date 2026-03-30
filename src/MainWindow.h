@@ -43,6 +43,10 @@ private:
     void OnClear();
     void OnPauseResume();
     void OnExport();
+    void OnSettings();
+    void BeginToolbarAdbCommand(int commandId, const std::wstring& arguments, const std::wstring& actionName);
+    void SetToolbarCommandInProgress(bool inProgress);
+    void RestartAdbCaptureForSelection();
     void RefreshDevices(bool keepSelection);
     void BeginConnectDevice(const std::wstring& address);
     void SetDeviceConnectInProgress(bool inProgress);
@@ -59,6 +63,7 @@ private:
     std::wstring GetWindowTextString(HWND hWnd) const;
     void LoadConfig();
     void SaveConfigIfNeeded();
+    void SaveExportDirectory();
     void UpdatePendingWindowBounds();
     void PaintCustomChrome(HDC hdc);
     void PaintHeader(HWND hWnd, HDC hdc);
@@ -71,6 +76,8 @@ private:
     void SaveKnownDevice(const std::wstring& address);
     void RemoveKnownDevice(const std::wstring& address);
     void LoadKnownDevices();
+    int FindToolbarIndexByCommandId(int commandId) const;
+    int FindDeviceIndexBySerial(const std::wstring& serial) const;
     void ShowPickerPopup(HWND picker);
     void HidePickerPopup();
     void ApplyPopupSelection();
@@ -82,6 +89,7 @@ private:
     INT_PTR HandleControlColor(HDC hdc, HWND control);
     LRESULT HandleAppStatusMessage(LPARAM lParam);
     LRESULT HandleDeviceConnectResultMessage(LPARAM lParam);
+    LRESULT HandleToolbarAdbCommandResultMessage(LPARAM lParam);
     LRESULT HandleDrawItem(WPARAM wParam, LPARAM lParam);
     LRESULT HandleMeasureItem(LPARAM lParam);
     LRESULT HandleContextMenu(WPARAM wParam, LPARAM lParam);
@@ -99,6 +107,7 @@ private:
     HWND m_hKeywordEdit;
     HWND m_hTagEdit;
     HWND m_hPidEdit;
+    HWND m_hExcludeKeywordEdit;
     HWND m_hLevelCombo;
     HWND m_hListView;
     HWND m_hListHeader;
@@ -121,6 +130,7 @@ private:
     darkui::Edit m_keywordEditControl;
     darkui::Edit m_tagEditControl;
     darkui::Edit m_pidEditControl;
+    darkui::Edit m_excludeKeywordEditControl;
     darkui::Toolbar m_actionToolbar;
 
     AdbClient m_adbClient;
@@ -140,9 +150,14 @@ private:
     int m_pauseToolbarIndex;
     int m_selectedDeviceIndex;
     int m_selectedLevelIndex;
+    int m_lastToolbarSuccessCommandId;
     int m_pendingWindowWidth;
     int m_pendingWindowHeight;
+    std::wstring m_exportDirectory;
+    bool m_startAfterDeviceConnect;
+    bool m_loadingConfig;
     bool m_windowBoundsDirty;
+    bool m_toolbarCommandInProgress;
     bool m_deviceConnectInProgress;
     bool m_paused;
 };

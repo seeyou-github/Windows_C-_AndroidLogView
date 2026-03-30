@@ -140,7 +140,7 @@ void AddDeviceDialog::OnCreate() {
     m_ipEdit2.Create(m_hWnd, IDC_IP_EDIT_2, L"168", m_theme, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER);
     m_ipEdit3.Create(m_hWnd, IDC_IP_EDIT_3, L"", m_theme, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER);
     m_ipEdit4.Create(m_hWnd, IDC_IP_EDIT_4, L"", m_theme, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER);
-    m_portEdit.Create(m_hWnd, IDC_PORT_EDIT, L"5555", m_theme, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER);
+    m_portEdit.Create(m_hWnd, IDC_PORT_EDIT, L"", m_theme, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER);
     m_okButton.Create(m_hWnd, IDC_OK_BUTTON, L"连接", m_theme);
     m_cancelButton.Create(m_hWnd, IDC_CANCEL_BUTTON, L"取消", m_theme);
 

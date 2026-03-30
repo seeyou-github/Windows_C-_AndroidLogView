@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <vector>
 
 namespace {
 std::wstring ToLowerCopy(const std::wstring& text) {
@@ -10,11 +11,86 @@ std::wstring ToLowerCopy(const std::wstring& text) {
     return value;
 }
 
-bool ContainsCaseInsensitive(const std::wstring& source, const std::wstring& needle) {
-    if (needle.empty()) {
+std::wstring TrimCopy(const std::wstring& text) {
+    std::size_t start = 0;
+    while (start < text.size() && iswspace(text[start])) {
+        ++start;
+    }
+    std::size_t end = text.size();
+    while (end > start && iswspace(text[end - 1])) {
+        --end;
+    }
+    return text.substr(start, end - start);
+}
+
+bool WildcardMatch(const std::wstring& text, const std::wstring& pattern) {
+    std::size_t textIndex = 0;
+    std::size_t patternIndex = 0;
+    std::size_t starIndex = std::wstring::npos;
+    std::size_t matchIndex = 0;
+
+    while (textIndex < text.size()) {
+        if (patternIndex < pattern.size() && (pattern[patternIndex] == L'?' || pattern[patternIndex] == text[textIndex])) {
+            ++textIndex;
+            ++patternIndex;
+        } else if (patternIndex < pattern.size() && pattern[patternIndex] == L'*') {
+            starIndex = patternIndex++;
+            matchIndex = textIndex;
+        } else if (starIndex != std::wstring::npos) {
+            patternIndex = starIndex + 1;
+            textIndex = ++matchIndex;
+        } else {
+            return false;
+        }
+    }
+
+    while (patternIndex < pattern.size() && pattern[patternIndex] == L'*') {
+        ++patternIndex;
+    }
+    return patternIndex == pattern.size();
+}
+
+std::vector<std::wstring> SplitPatterns(const std::wstring& expression) {
+    std::vector<std::wstring> patterns;
+    std::size_t start = 0;
+    while (start <= expression.size()) {
+        const std::size_t end = expression.find(L'|', start);
+        const std::wstring token = TrimCopy(expression.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
+        if (!token.empty()) {
+            patterns.push_back(ToLowerCopy(token));
+        }
+        if (end == std::wstring::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return patterns;
+}
+
+bool PatternExpressionMatches(const std::wstring& source, const std::wstring& expression) {
+    if (expression.empty()) {
         return true;
     }
-    return ToLowerCopy(source).find(ToLowerCopy(needle)) != std::wstring::npos;
+
+    const std::wstring loweredSource = ToLowerCopy(source);
+    for (const auto& pattern : SplitPatterns(expression)) {
+        if (pattern.find_first_of(L"*?") != std::wstring::npos) {
+            if (WildcardMatch(loweredSource, pattern)) {
+                return true;
+            }
+            continue;
+        }
+        if (loweredSource.find(pattern) != std::wstring::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EntryMatchesPatternExpression(const LogEntry& entry, const std::wstring& expression) {
+    return PatternExpressionMatches(entry.message, expression) ||
+           PatternExpressionMatches(entry.rawLine, expression) ||
+           PatternExpressionMatches(entry.tag, expression);
 }
 }  // namespace
 
@@ -34,17 +110,19 @@ bool FilterEngine::Matches(const LogEntry& entry, const FilterOptions& options) 
         }
     }
 
-    if (!ContainsCaseInsensitive(entry.tag, options.tag)) {
+    if (!PatternExpressionMatches(entry.tag, options.tag)) {
         return false;
     }
 
-    if (options.keyword.empty()) {
-        return true;
+    if (!options.keyword.empty() && !EntryMatchesPatternExpression(entry, options.keyword)) {
+        return false;
     }
 
-    return ContainsCaseInsensitive(entry.message, options.keyword) ||
-           ContainsCaseInsensitive(entry.rawLine, options.keyword) ||
-           ContainsCaseInsensitive(entry.tag, options.keyword);
+    if (!options.excludeKeyword.empty() && EntryMatchesPatternExpression(entry, options.excludeKeyword)) {
+        return false;
+    }
+
+    return true;
 }
 
 std::vector<std::size_t> FilterEngine::BuildVisibleIndexes(const LogBuffer& buffer, const FilterOptions& options) {

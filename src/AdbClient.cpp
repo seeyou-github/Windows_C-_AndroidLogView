@@ -68,6 +68,9 @@ bool AdbClient::Start(const AdbLaunchOptions& options, const LogCallback& logCal
     if (m_running.load()) {
         return true;
     }
+    if (m_worker.joinable()) {
+        m_worker.join();
+    }
 
     m_launchOptions = options;
     m_logCallback = logCallback;
@@ -78,14 +81,15 @@ bool AdbClient::Start(const AdbLaunchOptions& options, const LogCallback& logCal
 }
 
 void AdbClient::Stop() {
-    if (!m_running.exchange(false)) {
+    const bool wasRunning = m_running.exchange(false);
+    if (!wasRunning && !m_worker.joinable()) {
         return;
     }
 
-    if (m_stdoutReadHandle != nullptr) {
+    if (wasRunning && m_stdoutReadHandle != nullptr) {
         CancelIoEx(static_cast<HANDLE>(m_stdoutReadHandle), nullptr);
     }
-    if (m_processHandle != nullptr) {
+    if (wasRunning && m_processHandle != nullptr) {
         TerminateProcess(static_cast<HANDLE>(m_processHandle), 0);
     }
 
@@ -159,6 +163,22 @@ bool AdbClient::ConnectNetworkDevice(const std::wstring& address, std::wstring& 
                                    lowered.find(L"no such host") != std::wstring::npos;
 
     return ok && exitCode == 0 && outputLooksSuccessful && !outputLooksFailed;
+}
+
+bool AdbClient::RunAdbCommand(const std::wstring& arguments, std::wstring& statusText, DWORD timeoutMs) {
+    std::string output;
+    DWORD exitCode = 0;
+    bool timedOut = false;
+    const bool ok = RunCommandCapture(L"adb " + arguments, output, &exitCode, timeoutMs, &timedOut);
+    statusText = Trim(Utf8ToWide(output));
+    if (timedOut) {
+        statusText = L"执行超时：" + arguments;
+        return false;
+    }
+    if (statusText.empty()) {
+        statusText = ok && exitCode == 0 ? (L"执行成功：adb " + arguments) : (L"执行失败：adb " + arguments);
+    }
+    return ok && exitCode == 0;
 }
 
 bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode, DWORD timeoutMs, bool* timedOut) {

@@ -27,6 +27,7 @@ struct LogEntry {
 
 struct FilterOptions {
     std::wstring keyword;
+    std::wstring excludeKeyword;
     std::wstring tag;
     std::wstring pidText;
     LogLevel minimumLevel = LogLevel::Verbose;
