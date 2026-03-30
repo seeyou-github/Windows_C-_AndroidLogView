@@ -108,6 +108,9 @@ MainWindow::~MainWindow() {
 bool MainWindow::Create(int x, int y, int width, int height, const wchar_t* title) {
     m_hWnd = CreateWindowExW(0, L"AndroidLogViewerMainWindow", title, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, width, height, nullptr,
                              nullptr, m_instance, this);
+    if (m_hWnd != nullptr) {
+        DarkMode::ApplyWindowDarkMode(m_hWnd);
+    }
     return m_hWnd != nullptr;
 }
 
@@ -281,6 +284,10 @@ void MainWindow::CreateControls() {
     m_hPopupList = nullptr;
     m_hActivePicker = nullptr;
     m_hListHeader = ListView_GetHeader(m_hListView);
+    DarkMode::ApplyControlTheme(m_hListView);
+    ListView_SetBkColor(m_hListView, DarkMode::kSurface);
+    ListView_SetTextBkColor(m_hListView, DarkMode::kSurface);
+    ListView_SetTextColor(m_hListView, DarkMode::kText);
 
     const HWND controls[] = {m_hListView, m_hStatusLabel};
     for (HWND control : controls) {
@@ -416,6 +423,7 @@ void MainWindow::OnCreate() {
     LoadConfig();
     SetStatus(ResourceStrings::Load(m_instance, IDS_STATUS_READY));
     SetTimer(m_hWnd, kFlushTimerId, kFlushIntervalMs, nullptr);
+    RedrawWindow(m_hWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
 void MainWindow::OnSize(int width, int height) {

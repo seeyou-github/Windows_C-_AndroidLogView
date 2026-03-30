@@ -9,6 +9,21 @@
 
 namespace {
 HBRUSH g_classBrush = nullptr;
+
+void ShowWindowWithoutWhiteFlash(HWND hWnd, int showCommand) {
+    const LONG_PTR exStyle = GetWindowLongPtrW(hWnd, GWL_EXSTYLE);
+    SetWindowLongPtrW(hWnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(hWnd, 0, 0, LWA_ALPHA);
+
+    ShowWindow(hWnd, showCommand);
+    UpdateWindow(hWnd);
+    RedrawWindow(hWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME);
+
+    SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
+    SetWindowLongPtrW(hWnd, GWL_EXSTYLE, exStyle);
+    SetWindowPos(hWnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
@@ -51,8 +66,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         return 1;
     }
 
-    ShowWindow(window.Window(), showCommand);
-    UpdateWindow(window.Window());
+    ShowWindowWithoutWhiteFlash(window.Window(), showCommand);
 
     MSG msg = {};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
