@@ -45,6 +45,19 @@ std::wstring GetExeDir() {
     const std::size_t pos = full.find_last_of(L"\\/");
     return pos == std::wstring::npos ? L"." : full.substr(0, pos);
 }
+
+RECT GetMonitorWorkAreaForWindow(HWND hWnd) {
+    RECT workArea = {};
+    MONITORINFO monitorInfo = {};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    const HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+    if (monitor != nullptr && GetMonitorInfoW(monitor, &monitorInfo)) {
+        workArea = monitorInfo.rcWork;
+    } else {
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
+    }
+    return workArea;
+}
 }  // namespace
 
 MainWindow::MainWindow(HINSTANCE instance)
@@ -75,6 +88,9 @@ MainWindow::MainWindow(HINSTANCE instance)
       m_pauseToolbarIndex(-1),
       m_selectedDeviceIndex(0),
       m_selectedLevelIndex(0),
+      m_pendingWindowWidth(1380),
+      m_pendingWindowHeight(860),
+      m_windowBoundsDirty(false),
       m_deviceConnectInProgress(false),
       m_paused(false) {
 }
@@ -122,7 +138,7 @@ LRESULT CALLBACK MainWindow::WindowProc(HWND hWnd, UINT message, WPARAM wParam, 
         window->OnSize(LOWORD(lParam), HIWORD(lParam));
         return 0;
     case WM_EXITSIZEMOVE:
-        window->SaveConfigIfNeeded();
+        window->UpdatePendingWindowBounds();
         return 0;
     case WM_COMMAND:
         window->OnCommand(wParam, lParam);
@@ -768,10 +784,13 @@ void MainWindow::LoadConfig() {
     m_config.Load();
     const int savedWidth = _wtoi(m_config.Get(L"window_width", L"1380").c_str());
     const int savedHeight = _wtoi(m_config.Get(L"window_height", L"860").c_str());
+    m_pendingWindowWidth = savedWidth > 640 ? savedWidth : 1380;
+    m_pendingWindowHeight = savedHeight > 480 ? savedHeight : 860;
     if (savedWidth > 640 && savedHeight > 480) {
-        RECT rc = {};
-        GetWindowRect(m_hWnd, &rc);
-        SetWindowPos(m_hWnd, nullptr, rc.left, rc.top, savedWidth, savedHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+        const RECT workArea = GetMonitorWorkAreaForWindow(m_hWnd);
+        const int x = workArea.left + ((workArea.right - workArea.left) - savedWidth) / 2;
+        const int y = workArea.top + ((workArea.bottom - workArea.top) - savedHeight) / 2;
+        SetWindowPos(m_hWnd, nullptr, x, y, savedWidth, savedHeight, SWP_NOZORDER | SWP_NOACTIVATE);
     }
     m_adbFilterEditControl.SetText(m_config.Get(L"adb_filter"));
     m_keywordEditControl.SetText(m_config.Get(L"keyword"));
@@ -784,16 +803,38 @@ void MainWindow::LoadConfig() {
 }
 
 void MainWindow::SaveConfigIfNeeded() {
-    RECT rc = {};
-    GetWindowRect(m_hWnd, &rc);
-    m_config.Set(L"window_width", std::to_wstring(rc.right - rc.left));
-    m_config.Set(L"window_height", std::to_wstring(rc.bottom - rc.top));
+    if (m_windowBoundsDirty) {
+        m_config.Set(L"window_width", std::to_wstring(m_pendingWindowWidth));
+        m_config.Set(L"window_height", std::to_wstring(m_pendingWindowHeight));
+        m_windowBoundsDirty = false;
+    }
     m_config.Set(L"adb_filter", m_adbFilterEditControl.GetText());
     m_config.Set(L"keyword", m_keywordEditControl.GetText());
     m_config.Set(L"tag", m_tagEditControl.GetText());
     m_config.Set(L"pid", m_pidEditControl.GetText());
     m_config.Set(L"level", std::to_wstring(m_selectedLevelIndex));
     m_config.SaveIfChanged();
+}
+
+void MainWindow::UpdatePendingWindowBounds() {
+    if (m_hWnd == nullptr || IsZoomed(m_hWnd) || IsIconic(m_hWnd)) {
+        return;
+    }
+
+    RECT rc = {};
+    GetWindowRect(m_hWnd, &rc);
+    const int width = rc.right - rc.left;
+    const int height = rc.bottom - rc.top;
+    if (width <= 640 || height <= 480) {
+        return;
+    }
+    if (width == m_pendingWindowWidth && height == m_pendingWindowHeight) {
+        return;
+    }
+
+    m_pendingWindowWidth = width;
+    m_pendingWindowHeight = height;
+    m_windowBoundsDirty = true;
 }
 
 void MainWindow::LoadKnownDevices() {

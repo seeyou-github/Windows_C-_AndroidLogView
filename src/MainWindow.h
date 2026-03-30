@@ -59,6 +59,7 @@ private:
     std::wstring GetWindowTextString(HWND hWnd) const;
     void LoadConfig();
     void SaveConfigIfNeeded();
+    void UpdatePendingWindowBounds();
     void PaintCustomChrome(HDC hdc);
     void PaintHeader(HWND hWnd, HDC hdc);
     void DrawButton(LPDRAWITEMSTRUCT drawInfo);
@@ -139,6 +140,9 @@ private:
     int m_pauseToolbarIndex;
     int m_selectedDeviceIndex;
     int m_selectedLevelIndex;
+    int m_pendingWindowWidth;
+    int m_pendingWindowHeight;
+    bool m_windowBoundsDirty;
     bool m_deviceConnectInProgress;
     bool m_paused;
 };
