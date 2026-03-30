@@ -463,12 +463,12 @@ void MainWindow::LayoutControls(int width, int height) {
     const int levelWidth = 130;
     const int pidWidth = 110;
     const int tagWidth = 170;
-    const int keywordWidth = 220;
     const int excludeKeywordWidth = 240;
     const int applyButtonWidth = 78;
-    const int secondRowAvailable =
-        width - kMargin * 2 - levelWidth - pidWidth - tagWidth - keywordWidth - excludeKeywordWidth - applyButtonWidth - rowGap * 6;
-    const int adbFilterWidth = std::max(220, secondRowAvailable);
+    const int adbFilterWidth = 220;
+    const int keywordWidth =
+        std::max(220, width - kMargin * 2 - pidWidth - levelWidth - tagWidth - adbFilterWidth - applyButtonWidth - excludeKeywordWidth -
+                           rowGap * 6);
 
     if (m_hDeviceCombo != nullptr) MoveWindow(m_hDeviceCombo, kMargin, row1Y, deviceWidth, kControlHeight, TRUE);
     if (m_hBufferCombo != nullptr) MoveWindow(m_hBufferCombo, kMargin + deviceWidth + rowGap, row1Y, bufferWidth, kControlHeight, TRUE);
@@ -477,10 +477,6 @@ void MainWindow::LayoutControls(int width, int height) {
     }
 
     int x = kMargin;
-    MoveWindow(m_hAdbFilterEdit, x, row2Y, adbFilterWidth, kControlHeight, TRUE);
-    x += adbFilterWidth + rowGap;
-    if (m_hApplyAdbFilterButton != nullptr) MoveWindow(m_hApplyAdbFilterButton, x, row2Y, applyButtonWidth, kControlHeight, TRUE);
-    x += applyButtonWidth + rowGap;
     MoveWindow(m_hKeywordEdit, x, row2Y, keywordWidth, kControlHeight, TRUE);
     x += keywordWidth + rowGap;
     MoveWindow(m_hTagEdit, x, row2Y, tagWidth, kControlHeight, TRUE);
@@ -489,6 +485,10 @@ void MainWindow::LayoutControls(int width, int height) {
     x += pidWidth + rowGap;
     if (m_hLevelCombo != nullptr) MoveWindow(m_hLevelCombo, x, row2Y, levelWidth, kControlHeight, TRUE);
     x += levelWidth + rowGap;
+    MoveWindow(m_hAdbFilterEdit, x, row2Y, adbFilterWidth, kControlHeight, TRUE);
+    x += adbFilterWidth + rowGap;
+    if (m_hApplyAdbFilterButton != nullptr) MoveWindow(m_hApplyAdbFilterButton, x, row2Y, applyButtonWidth, kControlHeight, TRUE);
+    x += applyButtonWidth + rowGap;
     if (m_hExcludeKeywordEdit != nullptr) MoveWindow(m_hExcludeKeywordEdit, x, row2Y, excludeKeywordWidth, kControlHeight, TRUE);
 
     MoveWindow(m_hListView, kMargin, kToolbarHeight, width - kMargin * 2, height - kToolbarHeight - statusHeight - kMargin, TRUE);
