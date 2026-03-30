@@ -5,15 +5,32 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
 
 namespace darkui {
 namespace {
 
 constexpr wchar_t kEditHostClassName[] = L"DarkUiEditHost";
 constexpr int kEditPlaceholderId = 0x61A7;
+constexpr wchar_t kEditDebugLogPath[] = L"demo\\build\\edit_layout_debug.log";
 
 ATOM EnsureEditHostClassRegistered(HINSTANCE instance);
 LRESULT CALLBACK EditHostWindowProcThunk(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+
+void AppendEditDebugLog(const wchar_t* format, ...) {
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, kEditDebugLogPath, L"a+, ccs=UTF-8") != 0 || !file) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, format);
+    vfwprintf(file, format, args);
+    va_end(args);
+    fputws(L"\n", file);
+    fclose(file);
+}
 
 }  // namespace
 
@@ -26,6 +43,7 @@ struct Edit::Impl {
     // behavior independent from native EM_SETCUEBANNER support.
     HWND placeholderHwnd = nullptr;
     std::wstring cueBanner;
+    std::wstring debugLayoutInfo;
 
     explicit Impl(Edit* edit) : owner(edit) {}
 
@@ -97,20 +115,59 @@ struct Edit::Impl {
         return size;
     }
 
+    TEXTMETRICW CurrentFontMetrics() const {
+        TEXTMETRICW metrics{};
+        if (!owner->editHwnd_) {
+            return metrics;
+        }
+        HDC dc = GetDC(owner->editHwnd_);
+        if (!dc) {
+            return metrics;
+        }
+        HFONT drawFont = font ? font : reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        HFONT oldFont = drawFont ? reinterpret_cast<HFONT>(SelectObject(dc, drawFont)) : nullptr;
+        GetTextMetricsW(dc, &metrics);
+        if (oldFont) {
+            SelectObject(dc, oldFont);
+        }
+        ReleaseDC(owner->editHwnd_, dc);
+        return metrics;
+    }
+
     // Content insets are based on both the rounded host shape and the current
     // font metrics so larger fonts and multiline edits keep a safe visual margin.
     RECT ContentRect(HWND window) const {
         RECT rect = ClientRect(window);
         const SIZE textMetrics = CurrentTextMetrics();
+        const TEXTMETRICW fontMetrics = CurrentFontMetrics();
         const bool multiline = owner->editHwnd_ && (GetWindowLongPtrW(owner->editHwnd_, GWL_STYLE) & ES_MULTILINE) != 0;
         const int textInsetX = textMetrics.cx > 0 ? static_cast<int>(textMetrics.cx) : 0;
-        const int textInsetY = multiline ? 8 : (static_cast<int>(textMetrics.cy) + 6) / 6 + 4;
         const int insetX = std::max(10, std::max(owner->cornerRadius_ / 2 + 4, textInsetX));
-        const int insetY = std::max(7, textInsetY);
         rect.left += insetX;
-        rect.top += insetY;
         rect.right -= insetX;
-        rect.bottom -= insetY;
+
+        if (multiline) {
+            rect.top += 8;
+            rect.bottom -= 8;
+        } else {
+            const int clientHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+            const int textHeight = std::max(1, static_cast<int>(textMetrics.cy));
+            const int descent = static_cast<int>(fontMetrics.tmDescent);
+            const int internalLeading = static_cast<int>(fontMetrics.tmInternalLeading);
+            const int desiredHeight = std::min(clientHeight, textHeight + std::max(4, descent + 2));
+            const int extraSpace = std::max(0, clientHeight - desiredHeight);
+            // Single-line native EDIT looks visually high when the child window is too tall.
+            // Keep the child tighter and place it lower for smaller fonts; let larger fonts
+            // drift upward gradually as they consume more vertical space.
+            const double topBias = std::clamp(0.80 - static_cast<double>(textHeight - 20) * 0.012 - static_cast<double>(internalLeading) * 0.008,
+                                              0.46,
+                                              0.80);
+            const int topInsetY = std::max(3, static_cast<int>(extraSpace * topBias));
+            const int bottomInsetY = std::max(4, clientHeight - desiredHeight - topInsetY);
+            rect.top += topInsetY;
+            rect.bottom -= bottomInsetY;
+        }
+
         if (rect.right < rect.left) rect.right = rect.left;
         if (rect.bottom < rect.top) rect.bottom = rect.top;
         return rect;
@@ -147,9 +204,37 @@ struct Edit::Impl {
             MoveWindow(owner->editHwnd_, rect.left, rect.top, width, height, FALSE);
         }
         if (placeholderHwnd) {
-            MoveWindow(placeholderHwnd, rect.left, rect.top, width, height, FALSE);
+            const TEXTMETRICW metrics = CurrentFontMetrics();
+            const int extraBottom = std::max(2, static_cast<int>(metrics.tmDescent) / 2);
+            RECT client = ClientRect(owner->hostHwnd_);
+            const int placeholderBottom = std::min(client.bottom, rect.bottom + extraBottom);
+            const int placeholderHeight = std::max(1, static_cast<int>(placeholderBottom - rect.top));
+            MoveWindow(placeholderHwnd, rect.left, rect.top, width, placeholderHeight, FALSE);
             InvalidateRect(placeholderHwnd, nullptr, TRUE);
         }
+
+        const RECT client = ClientRect(owner->hostHwnd_);
+        const SIZE textMetrics = CurrentTextMetrics();
+        const TEXTMETRICW fontMetrics = CurrentFontMetrics();
+        wchar_t buffer[256]{};
+        _snwprintf_s(buffer,
+                     _countof(buffer),
+                     _TRUNCATE,
+                     L"id=%d font=%d client=%ldx%ld content=(%ld,%ld,%ld,%ld) textH=%ld asc=%ld desc=%ld lead=%ld",
+                     owner->controlId_,
+                     owner->theme_.uiFont.height,
+                     client.right - client.left,
+                     client.bottom - client.top,
+                     rect.left,
+                     rect.top,
+                     rect.right,
+                     rect.bottom,
+                     static_cast<long>(textMetrics.cy),
+                     static_cast<long>(fontMetrics.tmAscent),
+                     static_cast<long>(fontMetrics.tmDescent),
+                     static_cast<long>(fontMetrics.tmInternalLeading));
+        debugLayoutInfo = buffer;
+        AppendEditDebugLog(L"[Layout] %ls", debugLayoutInfo.c_str());
     }
 
     bool IsFocused() const {
@@ -493,6 +578,10 @@ void Edit::SetReadOnly(bool readOnly) {
     if (editHwnd_) {
         SendMessageW(editHwnd_, EM_SETREADONLY, readOnly ? TRUE : FALSE, 0);
     }
+}
+
+std::wstring Edit::DebugLayoutInfo() const {
+    return impl_ ? impl_->debugLayoutInfo : std::wstring{};
 }
 
 }  // namespace darkui

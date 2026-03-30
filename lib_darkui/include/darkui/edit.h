@@ -81,6 +81,8 @@ public:
     // Parameters:
     // - readOnly: When true, the inner EDIT becomes non-editable but keeps the same dark colors.
     void SetReadOnly(bool readOnly);
+    // Returns the latest internal layout debug string for this control.
+    std::wstring DebugLayoutInfo() const;
 
 private:
     std::unique_ptr<Impl> impl_;

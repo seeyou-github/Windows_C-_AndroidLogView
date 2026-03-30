@@ -7,7 +7,7 @@ if not exist build mkdir build
 
 set CXX=g++
 set RC=windres
-set CXXFLAGS=-std=c++17 -DUNICODE -D_UNICODE -Isrc -Ires -IWindows_C++_lib_darkui\include
+set CXXFLAGS=-std=c++17 -DUNICODE -D_UNICODE -Isrc -Ires -Ilib_darkui\include
 set LDFLAGS=-municode -mwindows -lgdi32 -lcomctl32 -lshell32 -lole32 -loleaut32 -luuid -ldwmapi -luxtheme
 
 %CXX% -c src\main.cpp %CXXFLAGS% -o build\main.o
@@ -46,19 +46,19 @@ if errorlevel 1 goto error
 %CXX% -c src\Config.cpp %CXXFLAGS% -o build\Config.o
 if errorlevel 1 goto error
 
-%CXX% -c Windows_C++_lib_darkui\src\button.cpp %CXXFLAGS% -o build\darkui_button.o
+%CXX% -c lib_darkui\src\button.cpp %CXXFLAGS% -o build\darkui_button.o
 if errorlevel 1 goto error
 
-%CXX% -c Windows_C++_lib_darkui\src\combobox.cpp %CXXFLAGS% -o build\darkui_combobox.o
+%CXX% -c lib_darkui\src\combobox.cpp %CXXFLAGS% -o build\darkui_combobox.o
 if errorlevel 1 goto error
 
-%CXX% -c Windows_C++_lib_darkui\src\edit.cpp %CXXFLAGS% -o build\darkui_edit.o
+%CXX% -c lib_darkui\src\edit.cpp %CXXFLAGS% -o build\darkui_edit.o
 if errorlevel 1 goto error
 
-%CXX% -c Windows_C++_lib_darkui\src\scrollbar.cpp %CXXFLAGS% -o build\darkui_scrollbar.o
+%CXX% -c lib_darkui\src\scrollbar.cpp %CXXFLAGS% -o build\darkui_scrollbar.o
 if errorlevel 1 goto error
 
-%CXX% -c Windows_C++_lib_darkui\src\toolbar.cpp %CXXFLAGS% -o build\darkui_toolbar.o
+%CXX% -c lib_darkui\src\toolbar.cpp %CXXFLAGS% -o build\darkui_toolbar.o
 if errorlevel 1 goto error
 
 %RC% res\resource.rc -O coff -o build\resource.o
@@ -74,6 +74,7 @@ goto end
 
 :error
 echo ===== Build failed =====
+pause
 exit /b 1
 
 :end

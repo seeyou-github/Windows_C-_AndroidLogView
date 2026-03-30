@@ -806,7 +806,7 @@ struct Toolbar::Impl {
 
             HGDIOBJ oldBrush = SelectObject(dc, fill ? fill : reinterpret_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
             HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, GetStockObject(NULL_PEN)));
-            Rectangle(dc, rc.left, rc.top, rc.right, rc.bottom);
+            RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, 12, 12);
             SelectObject(dc, oldPen);
             SelectObject(dc, oldBrush);
 
@@ -862,7 +862,7 @@ struct Toolbar::Impl {
             }
             HGDIOBJ oldBrush = SelectObject(dc, overflowFill ? overflowFill : reinterpret_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
             HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, GetStockObject(NULL_PEN)));
-            Rectangle(dc, overflowRect.left, overflowRect.top, overflowRect.right, overflowRect.bottom);
+            RoundRect(dc, overflowRect.left, overflowRect.top, overflowRect.right, overflowRect.bottom, 12, 12);
             SelectObject(dc, oldPen);
             SelectObject(dc, oldBrush);
 
