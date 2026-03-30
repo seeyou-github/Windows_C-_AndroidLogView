@@ -35,5 +35,6 @@ struct FilterOptions {
 
 struct AdbLaunchOptions {
     std::wstring deviceSerial;
+    std::wstring logBuffer = L"main";
     std::wstring adbPriorityFilter;
 };

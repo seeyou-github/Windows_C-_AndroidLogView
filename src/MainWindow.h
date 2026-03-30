@@ -43,7 +43,9 @@ private:
     void OnClear();
     void OnPauseResume();
     void OnExport();
+    void OnOpenLogFolder();
     void OnSettings();
+    void OnFilterRulesHelp();
     void BeginToolbarAdbCommand(int commandId, const std::wstring& arguments, const std::wstring& actionName);
     void SetToolbarCommandInProgress(bool inProgress);
     void RestartAdbCaptureForSelection();
@@ -82,6 +84,7 @@ private:
     void HidePickerPopup();
     void ApplyPopupSelection();
     std::wstring GetSelectedDeviceText() const;
+    std::wstring GetSelectedBufferText() const;
     std::wstring GetSelectedLevelText() const;
 
     LRESULT HandleNotify(LPARAM lParam);
@@ -103,7 +106,9 @@ private:
     HWND m_hWnd;
     HWND m_hToolbarPanel;
     HWND m_hDeviceCombo;
+    HWND m_hBufferCombo;
     HWND m_hAdbFilterEdit;
+    HWND m_hApplyAdbFilterButton;
     HWND m_hKeywordEdit;
     HWND m_hTagEdit;
     HWND m_hPidEdit;
@@ -125,6 +130,7 @@ private:
     HPEN m_focusPen;
     darkui::Theme m_darkTheme;
     darkui::ComboBox m_deviceComboControl;
+    darkui::ComboBox m_bufferComboControl;
     darkui::ComboBox m_levelComboControl;
     darkui::Edit m_adbFilterEditControl;
     darkui::Edit m_keywordEditControl;
@@ -144,11 +150,14 @@ private:
     std::vector<std::wstring> m_knownDevices;
     std::unordered_map<HWND, std::wstring> m_editCueTexts;
     std::vector<darkui::ComboItem> m_deviceComboItems;
+    std::vector<darkui::ComboItem> m_bufferComboItems;
     std::vector<darkui::ComboItem> m_levelComboItems;
     std::vector<std::wstring> m_deviceItems;
+    std::vector<std::wstring> m_bufferItems;
     std::vector<std::wstring> m_levelItems;
     int m_pauseToolbarIndex;
     int m_selectedDeviceIndex;
+    int m_selectedBufferIndex;
     int m_selectedLevelIndex;
     int m_lastToolbarSuccessCommandId;
     int m_pendingWindowWidth;

@@ -2,11 +2,13 @@
 
 #include "AddDeviceDialog.h"
 #include "DarkMode.h"
+#include "FilterRulesDialog.h"
 #include "LogParser.h"
 #include "ResourceStrings.h"
 #include "SettingsDialog.h"
 
 #include <commctrl.h>
+#include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
@@ -96,7 +98,9 @@ MainWindow::MainWindow(HINSTANCE instance)
       m_hWnd(nullptr),
       m_hToolbarPanel(nullptr),
       m_hDeviceCombo(nullptr),
+      m_hBufferCombo(nullptr),
       m_hAdbFilterEdit(nullptr),
+      m_hApplyAdbFilterButton(nullptr),
       m_hKeywordEdit(nullptr),
       m_hTagEdit(nullptr),
       m_hPidEdit(nullptr),
@@ -119,6 +123,7 @@ MainWindow::MainWindow(HINSTANCE instance)
       m_logBuffer(kMaxLogEntries),
       m_pauseToolbarIndex(-1),
       m_selectedDeviceIndex(0),
+      m_selectedBufferIndex(0),
       m_selectedLevelIndex(0),
       m_lastToolbarSuccessCommandId(0),
       m_pendingWindowWidth(1380),
@@ -286,7 +291,12 @@ void MainWindow::CreateControls() {
     m_hToolbarPanel = nullptr;
     m_deviceComboControl.Create(m_hWnd, IDC_DEVICE_COMBO, m_darkTheme);
     m_hDeviceCombo = m_deviceComboControl.hwnd();
+    m_bufferComboControl.Create(m_hWnd, IDC_BUFFER_COMBO, m_darkTheme);
+    m_hBufferCombo = m_bufferComboControl.hwnd();
     m_adbFilterEditControl.Create(m_hWnd, IDC_ADB_FILTER_EDIT, L"", m_darkTheme);
+    m_hApplyAdbFilterButton =
+        CreateWindowExW(0, L"BUTTON", L"\u5e94\u7528", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 0, 0, m_hWnd,
+                        reinterpret_cast<HMENU>(IDC_APPLY_ADB_FILTER_BUTTON), m_instance, nullptr);
     m_keywordEditControl.Create(m_hWnd, IDC_KEYWORD_EDIT, L"", m_darkTheme);
     m_tagEditControl.Create(m_hWnd, IDC_TAG_EDIT, L"", m_darkTheme);
     m_pidEditControl.Create(m_hWnd, IDC_PID_EDIT, L"", m_darkTheme);
@@ -297,6 +307,7 @@ void MainWindow::CreateControls() {
     m_pidEditControl.SetCueBanner(L"Pid\x8FC7\x6EE4");
     m_excludeKeywordEditControl.SetCueBanner(L"\x6392\x9664\x5173\x952E\x8BCD\xFF1A\x652F\x6301 * \x548C |");
     m_deviceComboControl.SetTheme(m_darkTheme);
+    m_bufferComboControl.SetTheme(m_darkTheme);
     m_adbFilterEditControl.SetCornerRadius(0);
     m_keywordEditControl.SetCornerRadius(0);
     m_tagEditControl.SetCornerRadius(0);
@@ -314,8 +325,10 @@ void MainWindow::CreateControls() {
             {ResourceStrings::Load(m_instance, IDS_BUTTON_START), IDC_START_BUTTON},
             {ResourceStrings::Load(m_instance, IDS_BUTTON_STOP), IDC_STOP_BUTTON},
             {ResourceStrings::Load(m_instance, IDS_BUTTON_PAUSE), IDC_PAUSE_BUTTON},
-            {ResourceStrings::Load(m_instance, IDS_BUTTON_EXPORT), IDC_EXPORT_BUTTON},
             {ResourceStrings::Load(m_instance, IDS_BUTTON_CLEAR), IDC_CLEAR_BUTTON},
+            {L"", 0, nullptr, nullptr, 0, true},
+            {ResourceStrings::Load(m_instance, IDS_BUTTON_EXPORT), IDC_EXPORT_BUTTON},
+            {L"\u6253\u5f00log\u6587\u4ef6\u5939", IDC_OPEN_LOG_FOLDER_BUTTON},
             {L"", 0, nullptr, nullptr, 0, true},
             {L"adb exit", IDC_ADB_KILL_SERVER_BUTTON},
             {L"", 0, nullptr, nullptr, 0, true},
@@ -326,6 +339,7 @@ void MainWindow::CreateControls() {
     m_pauseToolbarIndex = 2;
     if (m_actionToolbar.hwnd() != nullptr) {
         m_actionToolbar.AddItem({L"\x8BBE\x7F6E", IDC_SETTINGS_BUTTON, nullptr, nullptr, 0, false, false, false, true});
+        m_actionToolbar.AddItem({L"\u8fc7\u6ee4\u89c4\u5219\u8bf4\u660e", IDC_FILTER_RULES_BUTTON, nullptr, nullptr, 0, false, false, false, true});
     }
     m_hListView = CreateWindowExW(0, WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS,
                                   0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(IDC_LOG_LIST), m_instance, nullptr);
@@ -340,7 +354,7 @@ void MainWindow::CreateControls() {
     ListView_SetTextBkColor(m_hListView, DarkMode::kSurface);
     ListView_SetTextColor(m_hListView, DarkMode::kText);
 
-    const HWND controls[] = {m_hListView, m_hStatusLabel};
+    const HWND controls[] = {m_hListView, m_hStatusLabel, m_hApplyAdbFilterButton};
     for (HWND control : controls) {
         if (control != nullptr) {
             SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(control == m_hListView ? m_monoFont : m_uiFont), TRUE);
@@ -356,6 +370,13 @@ void MainWindow::CreateControls() {
                     ResourceStrings::Load(m_instance, IDS_LEVEL_WARN),  ResourceStrings::Load(m_instance, IDS_LEVEL_ERROR),
                     ResourceStrings::Load(m_instance, IDS_LEVEL_FATAL)};
     m_levelComboItems.clear();
+    m_bufferItems = {L"main", L"system", L"radio", L"crash", L"all"};
+    m_bufferComboItems.clear();
+    for (std::size_t i = 0; i < m_bufferItems.size(); ++i) {
+        m_bufferComboItems.push_back({m_bufferItems[i], i, false});
+    }
+    m_bufferComboControl.SetItems(m_bufferComboItems);
+    m_bufferComboControl.SetSelection(0, false);
     for (std::size_t i = 0; i < m_levelItems.size(); ++i) {
         m_levelComboItems.push_back({m_levelItems[i], i, false});
     }
@@ -435,18 +456,22 @@ void MainWindow::LayoutControls(int width, int height) {
     const int row2Y = 58;
     const int statusHeight = 24;
     const int rowGap = 10;
-    const int deviceWidth = 320;
-    const int toolbarX = kMargin + deviceWidth + rowGap;
+    const int deviceWidth = 300;
+    const int bufferWidth = 110;
+    const int toolbarX = kMargin + deviceWidth + rowGap + bufferWidth + rowGap;
     const int toolbarWidth = std::max(220, width - toolbarX - kMargin);
     const int levelWidth = 130;
     const int pidWidth = 110;
     const int tagWidth = 170;
     const int keywordWidth = 220;
     const int excludeKeywordWidth = 240;
-    const int secondRowAvailable = width - kMargin * 2 - levelWidth - pidWidth - tagWidth - keywordWidth - excludeKeywordWidth - rowGap * 5;
+    const int applyButtonWidth = 78;
+    const int secondRowAvailable =
+        width - kMargin * 2 - levelWidth - pidWidth - tagWidth - keywordWidth - excludeKeywordWidth - applyButtonWidth - rowGap * 6;
     const int adbFilterWidth = std::max(220, secondRowAvailable);
 
     if (m_hDeviceCombo != nullptr) MoveWindow(m_hDeviceCombo, kMargin, row1Y, deviceWidth, kControlHeight, TRUE);
+    if (m_hBufferCombo != nullptr) MoveWindow(m_hBufferCombo, kMargin + deviceWidth + rowGap, row1Y, bufferWidth, kControlHeight, TRUE);
     if (m_actionToolbar.hwnd() != nullptr) {
         MoveWindow(m_actionToolbar.hwnd(), toolbarX, row1Y, toolbarWidth, m_darkTheme.toolbarHeight, TRUE);
     }
@@ -454,6 +479,8 @@ void MainWindow::LayoutControls(int width, int height) {
     int x = kMargin;
     MoveWindow(m_hAdbFilterEdit, x, row2Y, adbFilterWidth, kControlHeight, TRUE);
     x += adbFilterWidth + rowGap;
+    if (m_hApplyAdbFilterButton != nullptr) MoveWindow(m_hApplyAdbFilterButton, x, row2Y, applyButtonWidth, kControlHeight, TRUE);
+    x += applyButtonWidth + rowGap;
     MoveWindow(m_hKeywordEdit, x, row2Y, keywordWidth, kControlHeight, TRUE);
     x += keywordWidth + rowGap;
     MoveWindow(m_hTagEdit, x, row2Y, tagWidth, kControlHeight, TRUE);
@@ -505,6 +532,17 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM) {
         OnExport();
         return;
     }
+    if (controlId == IDC_APPLY_ADB_FILTER_BUTTON) {
+        if (m_adbClient.IsRunning()) {
+            RestartAdbCaptureForSelection();
+        }
+        SaveConfigIfNeeded();
+        return;
+    }
+    if (controlId == IDC_OPEN_LOG_FOLDER_BUTTON) {
+        OnOpenLogFolder();
+        return;
+    }
     if (controlId == IDC_CLEAR_BUTTON) {
         OnClear();
         return;
@@ -523,6 +561,10 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM) {
     }
     if (controlId == IDC_SETTINGS_BUTTON) {
         OnSettings();
+        return;
+    }
+    if (controlId == IDC_FILTER_RULES_BUTTON) {
+        OnFilterRulesHelp();
         return;
     }
 
@@ -548,6 +590,17 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM) {
         }
         m_selectedLevelIndex = std::max(0, m_levelComboControl.GetSelection());
         OnFilterChanged();
+        SaveConfigIfNeeded();
+        return;
+    }
+    if (controlId == IDC_BUFFER_COMBO && notifyCode == CBN_SELCHANGE) {
+        if (m_loadingConfig) {
+            return;
+        }
+        m_selectedBufferIndex = std::max(0, m_bufferComboControl.GetSelection());
+        if (m_adbClient.IsRunning()) {
+            RestartAdbCaptureForSelection();
+        }
         SaveConfigIfNeeded();
         return;
     }
@@ -785,6 +838,33 @@ void MainWindow::OnExport() {
     SetStatus(ResourceStrings::Load(m_instance, IDS_STATUS_EXPORTED) + L": " + path);
 }
 
+void MainWindow::OnOpenLogFolder() {
+    if (m_exportDirectory.empty()) {
+        OnSettings();
+        if (m_exportDirectory.empty()) {
+            return;
+        }
+    }
+
+    DWORD attributes = GetFileAttributesW(m_exportDirectory.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        MessageBoxW(m_hWnd, L"\u5bfc\u51falog\u76ee\u5f55\u4e0d\u5b58\u5728\uff0c\u8bf7\u5148\u5728\u8bbe\u7f6e\u91cc\u91cd\u65b0\u914d\u7f6e\u3002",
+                    L"\u6253\u5f00log\u6587\u4ef6\u5939", MB_OK | MB_ICONERROR);
+        OnSettings();
+        if (m_exportDirectory.empty()) {
+            return;
+        }
+    }
+
+    const HINSTANCE opened = ShellExecuteW(m_hWnd, L"open", m_exportDirectory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(opened) <= 32) {
+        MessageBoxW(m_hWnd, L"\u65e0\u6cd5\u6253\u5f00log\u8f93\u51fa\u6587\u4ef6\u5939\u3002", L"\u6253\u5f00log\u6587\u4ef6\u5939",
+                    MB_OK | MB_ICONERROR);
+        return;
+    }
+    SetStatus(L"\u5df2\u6253\u5f00log\u8f93\u51fa\u6587\u4ef6\u5939\u3002");
+}
+
 void MainWindow::OnSettings() {
     SettingsDialog dialog(m_instance);
     std::wstring exportDirectory = m_exportDirectory;
@@ -795,6 +875,11 @@ void MainWindow::OnSettings() {
     m_exportDirectory = exportDirectory;
     SaveExportDirectory();
     SetStatus(L"\x5BFC\x51FA\x76EE\x5F55\x5DF2\x4FDD\x5B58\x3002");
+}
+
+void MainWindow::OnFilterRulesHelp() {
+    FilterRulesDialog dialog(m_instance);
+    dialog.ShowModal(m_hWnd);
 }
 
 void MainWindow::RefreshDevices(bool keepSelection) {
@@ -902,10 +987,12 @@ void MainWindow::UpdateActionToolbarState() {
     const int startIndex = FindToolbarIndexByCommandId(IDC_START_BUTTON);
     const int stopIndex = FindToolbarIndexByCommandId(IDC_STOP_BUTTON);
     const int exportIndex = FindToolbarIndexByCommandId(IDC_EXPORT_BUTTON);
+    const int openFolderIndex = FindToolbarIndexByCommandId(IDC_OPEN_LOG_FOLDER_BUTTON);
     const int clearIndex = FindToolbarIndexByCommandId(IDC_CLEAR_BUTTON);
     const int killIndex = FindToolbarIndexByCommandId(IDC_ADB_KILL_SERVER_BUTTON);
     const int restartIndex = FindToolbarIndexByCommandId(IDC_ADB_RESTART_SERVER_BUTTON);
     const int logcatClearIndex = FindToolbarIndexByCommandId(IDC_ADB_LOGCAT_CLEAR_BUTTON);
+    const int rulesIndex = FindToolbarIndexByCommandId(IDC_FILTER_RULES_BUTTON);
     const int settingsIndex = FindToolbarIndexByCommandId(IDC_SETTINGS_BUTTON);
 
     if (stopIndex >= 0) {
@@ -917,10 +1004,12 @@ void MainWindow::UpdateActionToolbarState() {
     if (startIndex >= 0) m_actionToolbar.SetDisabled(startIndex, m_adbClient.IsRunning() || m_toolbarCommandInProgress);
     if (stopIndex >= 0) m_actionToolbar.SetDisabled(stopIndex, !m_adbClient.IsRunning() || m_toolbarCommandInProgress);
     if (exportIndex >= 0) m_actionToolbar.SetDisabled(exportIndex, m_toolbarCommandInProgress);
+    if (openFolderIndex >= 0) m_actionToolbar.SetDisabled(openFolderIndex, m_toolbarCommandInProgress);
     if (clearIndex >= 0) m_actionToolbar.SetDisabled(clearIndex, m_toolbarCommandInProgress);
     if (killIndex >= 0) m_actionToolbar.SetDisabled(killIndex, m_toolbarCommandInProgress);
     if (restartIndex >= 0) m_actionToolbar.SetDisabled(restartIndex, m_toolbarCommandInProgress);
     if (logcatClearIndex >= 0) m_actionToolbar.SetDisabled(logcatClearIndex, m_toolbarCommandInProgress);
+    if (rulesIndex >= 0) m_actionToolbar.SetDisabled(rulesIndex, m_toolbarCommandInProgress);
     if (settingsIndex >= 0) m_actionToolbar.SetDisabled(settingsIndex, m_toolbarCommandInProgress);
 
     const int successCommands[] = {
@@ -978,6 +1067,7 @@ AdbLaunchOptions MainWindow::ReadAdbLaunchOptions() const {
         const std::wstring serial = pos == std::wstring::npos ? text : text.substr(0, pos);
         options.deviceSerial = serial.rfind(L"* ", 0) == 0 ? serial.substr(2) : serial;
     }
+    options.logBuffer = GetSelectedBufferText();
     options.adbPriorityFilter = m_adbFilterEditControl.GetText();
     return options;
 }
@@ -1027,6 +1117,10 @@ void MainWindow::LoadConfig() {
     m_tagEditControl.SetText(m_config.Get(L"tag"));
     m_pidEditControl.SetText(m_config.Get(L"pid"));
     m_excludeKeywordEditControl.SetText(m_config.Get(L"exclude_keyword"));
+    const std::wstring logBuffer = m_config.Get(L"log_buffer", L"main");
+    auto bufferIt = std::find(m_bufferItems.begin(), m_bufferItems.end(), logBuffer);
+    m_selectedBufferIndex = bufferIt == m_bufferItems.end() ? 0 : static_cast<int>(bufferIt - m_bufferItems.begin());
+    m_bufferComboControl.SetSelection(m_selectedBufferIndex, false);
     const int level = _wtoi(m_config.Get(L"level", L"0").c_str());
     m_selectedLevelIndex = std::clamp(level, 0, static_cast<int>(m_levelItems.size()) - 1);
     m_levelComboControl.SetSelection(m_selectedLevelIndex, false);
@@ -1045,6 +1139,7 @@ void MainWindow::SaveConfigIfNeeded() {
     m_config.Set(L"tag", m_tagEditControl.GetText());
     m_config.Set(L"pid", m_pidEditControl.GetText());
     m_config.Set(L"exclude_keyword", m_excludeKeywordEditControl.GetText());
+    m_config.Set(L"log_buffer", GetSelectedBufferText());
     m_config.Set(L"level", std::to_wstring(m_selectedLevelIndex));
     m_config.Set(L"export_dir", m_exportDirectory);
     m_config.SaveIfChanged();
@@ -1157,6 +1252,7 @@ void MainWindow::PaintCustomChrome(HDC hdc) {
     FillRect(hdc, &topBar, m_bgBrush);
 
     DrawControlBorder(hdc, m_hDeviceCombo, GetFocus() == m_hDeviceCombo);
+    DrawControlBorder(hdc, m_hBufferCombo, GetFocus() == m_hBufferCombo);
     DrawControlBorder(hdc, m_hLevelCombo, GetFocus() == m_hLevelCombo);
     DrawControlBorder(hdc, m_hListView, GetFocus() == m_hListView);
 }
@@ -1193,7 +1289,18 @@ void MainWindow::DrawDropdownButton(LPDRAWITEMSTRUCT drawInfo) {
     SelectObject(drawInfo->hDC, oldBrush);
     SelectObject(drawInfo->hDC, oldPen);
 
-    std::wstring text = drawInfo->CtlID == IDC_DEVICE_COMBO ? GetSelectedDeviceText() : GetSelectedLevelText();
+    std::wstring text;
+    switch (drawInfo->CtlID) {
+    case IDC_DEVICE_COMBO:
+        text = GetSelectedDeviceText();
+        break;
+    case IDC_BUFFER_COMBO:
+        text = GetSelectedBufferText();
+        break;
+    default:
+        text = GetSelectedLevelText();
+        break;
+    }
     SetBkMode(drawInfo->hDC, TRANSPARENT);
     SetTextColor(drawInfo->hDC, DarkMode::kText);
     SelectObject(drawInfo->hDC, m_uiFont);
@@ -1505,6 +1612,7 @@ LRESULT MainWindow::HandleDrawItem(WPARAM, LPARAM lParam) {
         DrawPopupListItem(drawInfo);
         return TRUE;
     case IDC_DEVICE_COMBO:
+    case IDC_BUFFER_COMBO:
     case IDC_LEVEL_COMBO:
         DrawDropdownButton(drawInfo);
         return TRUE;
@@ -1513,6 +1621,7 @@ LRESULT MainWindow::HandleDrawItem(WPARAM, LPARAM lParam) {
     case IDC_PAUSE_BUTTON:
     case IDC_EXPORT_BUTTON:
     case IDC_CLEAR_BUTTON:
+    case IDC_APPLY_ADB_FILTER_BUTTON:
         DrawButton(drawInfo);
         return TRUE;
     default:
@@ -1652,6 +1761,13 @@ std::wstring MainWindow::GetSelectedDeviceText() const {
         return m_deviceItems[static_cast<std::size_t>(m_selectedDeviceIndex)];
     }
     return ResourceStrings::Load(m_instance, IDS_DEVICE_AUTO);
+}
+
+std::wstring MainWindow::GetSelectedBufferText() const {
+    if (m_selectedBufferIndex >= 0 && m_selectedBufferIndex < static_cast<int>(m_bufferItems.size())) {
+        return m_bufferItems[static_cast<std::size_t>(m_selectedBufferIndex)];
+    }
+    return L"main";
 }
 
 std::wstring MainWindow::GetSelectedLevelText() const {

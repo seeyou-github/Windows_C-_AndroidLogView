@@ -171,6 +171,7 @@ const std::vector<std::wstring>& Config::OrderedKeys() {
         L"tag",
         L"pid",
         L"exclude_keyword",
+        L"log_buffer",
         L"level",
         L"export_dir",
         L"known_devices",

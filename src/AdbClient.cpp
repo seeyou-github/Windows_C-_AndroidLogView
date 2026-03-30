@@ -49,7 +49,7 @@ std::wstring BuildLogcatCommand(const AdbLaunchOptions& options) {
     if (!options.deviceSerial.empty()) {
         command += L"-s \"" + options.deviceSerial + L"\" ";
     }
-    command += L"logcat -v threadtime";
+    command += L"logcat -b " + (options.logBuffer.empty() ? std::wstring(L"main") : options.logBuffer) + L" -v threadtime";
     if (!options.adbPriorityFilter.empty()) {
         command += L" " + options.adbPriorityFilter;
     }

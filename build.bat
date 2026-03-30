@@ -25,6 +25,9 @@ if errorlevel 1 goto error
 %CXX% -c src\SettingsDialog.cpp %CXXFLAGS% -o build\SettingsDialog.o
 if errorlevel 1 goto error
 
+%CXX% -c src\FilterRulesDialog.cpp %CXXFLAGS% -o build\FilterRulesDialog.o
+if errorlevel 1 goto error
+
 %CXX% -c src\DarkMode.cpp %CXXFLAGS% -o build\DarkMode.o
 if errorlevel 1 goto error
 
@@ -52,6 +55,9 @@ if errorlevel 1 goto error
 %CXX% -c Windows_C++_lib_darkui\src\edit.cpp %CXXFLAGS% -o build\darkui_edit.o
 if errorlevel 1 goto error
 
+%CXX% -c Windows_C++_lib_darkui\src\scrollbar.cpp %CXXFLAGS% -o build\darkui_scrollbar.o
+if errorlevel 1 goto error
+
 %CXX% -c Windows_C++_lib_darkui\src\toolbar.cpp %CXXFLAGS% -o build\darkui_toolbar.o
 if errorlevel 1 goto error
 
@@ -59,7 +65,7 @@ if errorlevel 1 goto error
 if errorlevel 1 goto error
 
 echo Linking...
-%CXX% build\main.o build\MainWindow.o build\AdbClient.o build\AddDeviceDialog.o build\SettingsDialog.o build\DarkMode.o build\LogParser.o build\LogBuffer.o build\FilterEngine.o build\ResourceStrings.o build\Config.o build\darkui_button.o build\darkui_combobox.o build\darkui_edit.o build\darkui_toolbar.o build\resource.o -o build\AndroidLogViewer.exe %LDFLAGS%
+%CXX% build\main.o build\MainWindow.o build\AdbClient.o build\AddDeviceDialog.o build\SettingsDialog.o build\FilterRulesDialog.o build\DarkMode.o build\LogParser.o build\LogBuffer.o build\FilterEngine.o build\ResourceStrings.o build\Config.o build\darkui_button.o build\darkui_combobox.o build\darkui_edit.o build\darkui_scrollbar.o build\darkui_toolbar.o build\resource.o -o build\AndroidLogViewer.exe %LDFLAGS%
 if errorlevel 1 goto error
 
 echo ===== Build succeeded =====
