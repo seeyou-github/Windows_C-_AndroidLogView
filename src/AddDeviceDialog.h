@@ -1,5 +1,8 @@
 #pragma once
 
+#include "darkui/button.h"
+#include "darkui/edit.h"
+
 #include <windows.h>
 
 #include <string>
@@ -18,13 +21,14 @@ private:
 
     HINSTANCE m_instance;
     HWND m_hWnd;
-    HWND m_hIpEdit1;
-    HWND m_hIpEdit2;
-    HWND m_hIpEdit3;
-    HWND m_hIpEdit4;
-    HWND m_hPortEdit;
-    HWND m_hOkButton;
-    HWND m_hCancelButton;
+    darkui::Theme m_theme;
+    darkui::Edit m_ipEdit1;
+    darkui::Edit m_ipEdit2;
+    darkui::Edit m_ipEdit3;
+    darkui::Edit m_ipEdit4;
+    darkui::Edit m_portEdit;
+    darkui::Button m_okButton;
+    darkui::Button m_cancelButton;
     HFONT m_font;
     bool m_done;
     bool m_accepted;

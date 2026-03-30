@@ -36,6 +36,14 @@ std::wstring Trim(const std::wstring& text) {
     return text.substr(start, end - start);
 }
 
+std::wstring ToLower(const std::wstring& text) {
+    std::wstring lowered = text;
+    for (auto& ch : lowered) {
+        ch = static_cast<wchar_t>(towlower(ch));
+    }
+    return lowered;
+}
+
 std::wstring BuildLogcatCommand(const AdbLaunchOptions& options) {
     std::wstring command = L"adb ";
     if (!options.deviceSerial.empty()) {
@@ -125,18 +133,39 @@ std::vector<AdbClient::DeviceInfo> AdbClient::ListDevices() {
     return devices;
 }
 
-bool AdbClient::ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText) {
+bool AdbClient::ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText, bool* timedOut) {
     std::string output;
     DWORD exitCode = 0;
-    const bool ok = RunCommandCapture(L"adb connect " + address, output, &exitCode);
-    statusText = Utf8ToWide(output);
+    bool didTimeOut = false;
+    const bool ok = RunCommandCapture(L"adb connect " + address, output, &exitCode, 5000, &didTimeOut);
+    statusText = Trim(Utf8ToWide(output));
+    if (timedOut != nullptr) {
+        *timedOut = didTimeOut;
+    }
+    if (didTimeOut) {
+        statusText = L"连接超时：5 秒内未收到 adb connect 响应。";
+        return false;
+    }
     if (statusText.empty()) {
         statusText = ok ? L"adb connect succeeded." : L"adb connect failed.";
     }
-    return ok && exitCode == 0;
+
+    const std::wstring lowered = ToLower(statusText);
+    const bool outputLooksSuccessful =
+        lowered.find(L"connected to") != std::wstring::npos || lowered.find(L"already connected to") != std::wstring::npos;
+    const bool outputLooksFailed = lowered.find(L"cannot") != std::wstring::npos || lowered.find(L"unable") != std::wstring::npos ||
+                                   lowered.find(L"failed") != std::wstring::npos || lowered.find(L"error") != std::wstring::npos ||
+                                   lowered.find(L"unknown host") != std::wstring::npos ||
+                                   lowered.find(L"no such host") != std::wstring::npos;
+
+    return ok && exitCode == 0 && outputLooksSuccessful && !outputLooksFailed;
 }
 
-bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode) {
+bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode, DWORD timeoutMs, bool* timedOut) {
+    if (timedOut != nullptr) {
+        *timedOut = false;
+    }
+
     SECURITY_ATTRIBUTES sa = {};
     sa.nLength = sizeof(sa);
     sa.bInheritHandle = TRUE;
@@ -165,6 +194,15 @@ bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& 
         return false;
     }
 
+    DWORD waitResult = WaitForSingleObject(pi.hProcess, timeoutMs);
+    if (waitResult == WAIT_TIMEOUT) {
+        if (timedOut != nullptr) {
+            *timedOut = true;
+        }
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+    }
+
     std::vector<char> buffer(4096);
     while (true) {
         DWORD bytesRead = 0;
@@ -175,7 +213,6 @@ bool AdbClient::RunCommandCapture(const std::wstring& commandLine, std::string& 
         output.append(buffer.data(), buffer.data() + bytesRead);
     }
 
-    WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD processExitCode = 0;
     GetExitCodeProcess(pi.hProcess, &processExitCode);
     if (exitCode != nullptr) {

@@ -27,10 +27,11 @@ public:
     void Stop();
     bool IsRunning() const;
     static std::vector<DeviceInfo> ListDevices();
-    static bool ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText);
+    static bool ConnectNetworkDevice(const std::wstring& address, std::wstring& statusText, bool* timedOut = nullptr);
 
 private:
-    static bool RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode = nullptr);
+    static bool RunCommandCapture(const std::wstring& commandLine, std::string& output, DWORD* exitCode = nullptr, DWORD timeoutMs = INFINITE,
+                                  bool* timedOut = nullptr);
     void WorkerLoop();
     void EmitStatus(const std::wstring& text) const;
 
