@@ -55,9 +55,24 @@ std::wstring BuildLogcatCommand(const AdbLaunchOptions& options) {
     }
     return command;
 }
+
+HANDLE CreateKillOnCloseJobObject() {
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job == nullptr) {
+        return nullptr;
+    }
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+        CloseHandle(job);
+        return nullptr;
+    }
+    return job;
+}
 }  // namespace
 
-AdbClient::AdbClient() : m_running(false), m_processHandle(nullptr), m_threadHandle(nullptr), m_stdoutReadHandle(nullptr) {
+AdbClient::AdbClient() : m_running(false), m_jobHandle(nullptr), m_processHandle(nullptr), m_threadHandle(nullptr), m_stdoutReadHandle(nullptr) {
 }
 
 AdbClient::~AdbClient() {
@@ -65,7 +80,8 @@ AdbClient::~AdbClient() {
 }
 
 bool AdbClient::Start(const AdbLaunchOptions& options, const LogCallback& logCallback, const StatusCallback& statusCallback) {
-    if (m_running.load()) {
+    bool expected = false;
+    if (!m_running.compare_exchange_strong(expected, true)) {
         return true;
     }
     if (m_worker.joinable()) {
@@ -75,7 +91,6 @@ bool AdbClient::Start(const AdbLaunchOptions& options, const LogCallback& logCal
     m_launchOptions = options;
     m_logCallback = logCallback;
     m_statusCallback = statusCallback;
-    m_running = true;
     m_worker = std::thread(&AdbClient::WorkerLoop, this);
     return true;
 }
@@ -90,7 +105,11 @@ void AdbClient::Stop() {
         CancelIoEx(static_cast<HANDLE>(m_stdoutReadHandle), nullptr);
     }
     if (wasRunning && m_processHandle != nullptr) {
-        TerminateProcess(static_cast<HANDLE>(m_processHandle), 0);
+        if (m_jobHandle != nullptr) {
+            TerminateJobObject(static_cast<HANDLE>(m_jobHandle), 0);
+        } else {
+            TerminateProcess(static_cast<HANDLE>(m_processHandle), 0);
+        }
     }
 
     if (m_worker.joinable()) {
@@ -298,6 +317,15 @@ void AdbClient::WorkerLoop() {
         return;
     }
 
+    HANDLE job = CreateKillOnCloseJobObject();
+    if (job != nullptr) {
+        if (!AssignProcessToJobObject(job, pi.hProcess)) {
+            CloseHandle(job);
+            job = nullptr;
+        }
+    }
+
+    m_jobHandle = job;
     m_processHandle = pi.hProcess;
     m_threadHandle = pi.hThread;
     m_stdoutReadHandle = readPipe;
@@ -369,6 +397,10 @@ void AdbClient::WorkerLoop() {
     if (m_processHandle != nullptr) {
         CloseHandle(static_cast<HANDLE>(m_processHandle));
         m_processHandle = nullptr;
+    }
+    if (m_jobHandle != nullptr) {
+        CloseHandle(static_cast<HANDLE>(m_jobHandle));
+        m_jobHandle = nullptr;
     }
     if (m_stdoutReadHandle != nullptr) {
         CloseHandle(static_cast<HANDLE>(m_stdoutReadHandle));

@@ -41,6 +41,7 @@ private:
     LogCallback m_logCallback;
     StatusCallback m_statusCallback;
     AdbLaunchOptions m_launchOptions;
+    void* m_jobHandle;
     void* m_processHandle;
     void* m_threadHandle;
     void* m_stdoutReadHandle;

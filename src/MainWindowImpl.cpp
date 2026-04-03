@@ -29,6 +29,7 @@ constexpr UINT kFlushIntervalMs = 50;
 constexpr UINT kAppStatusMessage = WM_APP + 1;
 constexpr UINT kDeviceConnectResultMessage = WM_APP + 2;
 constexpr UINT kToolbarAdbCommandResultMessage = WM_APP + 3;
+constexpr UINT kDeviceListResultMessage = WM_APP + 4;
 constexpr std::size_t kMaxLogEntries = 200000;
 
 struct DeviceConnectResult {
@@ -44,6 +45,12 @@ struct ToolbarAdbCommandResult {
     std::wstring arguments;
     std::wstring status;
     bool success = false;
+};
+
+struct DeviceListResult {
+    std::vector<AdbClient::DeviceInfo> devices;
+    std::wstring currentSelection;
+    bool keepSelection = false;
 };
 
 std::wstring FormatStatusLine(const std::wstring& baseText, std::size_t totalCount, std::size_t visibleCount, bool paused) {
@@ -224,6 +231,8 @@ LRESULT CALLBACK MainWindow::WindowProc(HWND hWnd, UINT message, WPARAM wParam, 
     }
     case kAppStatusMessage:
         return window->HandleAppStatusMessage(lParam);
+    case kDeviceListResultMessage:
+        return window->HandleDeviceListResultMessage(lParam);
     case kDeviceConnectResultMessage:
         return window->HandleDeviceConnectResultMessage(lParam);
     case kToolbarAdbCommandResultMessage:
@@ -500,8 +509,9 @@ void MainWindow::LayoutControls(int width, int height) {
 void MainWindow::OnCreate() {
     InitThemeResources();
     CreateControls();
+    m_config.Load();
     LoadKnownDevices();
-    RefreshDevices(false);
+    BeginRefreshDevices(false);
     LoadConfig();
     SetStatus(ResourceStrings::Load(m_instance, IDS_STATUS_READY));
     SetTimer(m_hWnd, kFlushTimerId, kFlushIntervalMs, nullptr);
@@ -907,6 +917,20 @@ void MainWindow::OnFilterRulesHelp() {
     dialog.ShowModal(m_hWnd);
 }
 
+void MainWindow::BeginRefreshDevices(bool keepSelection) {
+    const HWND hwnd = m_hWnd;
+    const std::wstring currentSelection = keepSelection ? GetSelectedDeviceText() : L"";
+    std::thread([hwnd, keepSelection, currentSelection]() {
+        auto* result = new DeviceListResult();
+        result->keepSelection = keepSelection;
+        result->currentSelection = currentSelection;
+        result->devices = AdbClient::ListDevices();
+        if (!PostMessageW(hwnd, kDeviceListResultMessage, 0, reinterpret_cast<LPARAM>(result))) {
+            delete result;
+        }
+    }).detach();
+}
+
 void MainWindow::RefreshDevices(bool keepSelection) {
     const std::wstring currentSelection = keepSelection ? GetSelectedDeviceText() : L"";
     m_deviceItems.clear();
@@ -1156,7 +1180,6 @@ std::wstring MainWindow::GetWindowTextString(HWND hWnd) const {
 
 void MainWindow::LoadConfig() {
     m_loadingConfig = true;
-    m_config.Load();
     const int savedWidth = _wtoi(m_config.Get(L"window_width", L"1380").c_str());
     const int savedHeight = _wtoi(m_config.Get(L"window_height", L"860").c_str());
     m_exportDirectory = m_config.Get(L"export_dir");
@@ -1228,7 +1251,6 @@ void MainWindow::UpdatePendingWindowBounds() {
 }
 
 void MainWindow::LoadKnownDevices() {
-    m_config.Load();
     m_knownDevices.clear();
     std::wstring known = m_config.Get(L"known_devices");
     std::wstringstream ss(known);
@@ -1591,6 +1613,53 @@ LRESULT MainWindow::HandleAppStatusMessage(LPARAM lParam) {
     return 0;
 }
 
+LRESULT MainWindow::HandleDeviceListResultMessage(LPARAM lParam) {
+    std::unique_ptr<DeviceListResult> result(reinterpret_cast<DeviceListResult*>(lParam));
+    if (!result) {
+        return 0;
+    }
+
+    const std::wstring currentSelection = result->keepSelection ? result->currentSelection : L"";
+    m_deviceItems.clear();
+    m_deviceComboItems.clear();
+    m_deviceItems.push_back(L"Android Devices");
+    m_deviceComboItems.push_back({m_deviceItems.back(), 0, false});
+    std::vector<std::wstring> added;
+    int selected = 0;
+    bool matchedCurrentSelection = false;
+    for (std::size_t i = 0; i < result->devices.size(); ++i) {
+        const std::wstring label = L"* " + result->devices[i].serial + L" [" + result->devices[i].state + L"]";
+        m_deviceItems.push_back(label);
+        m_deviceComboItems.push_back({label, i + 1, true});
+        added.push_back(result->devices[i].serial);
+        if (!currentSelection.empty() && currentSelection == label) {
+            selected = static_cast<int>(m_deviceItems.size() - 1);
+            matchedCurrentSelection = true;
+        }
+    }
+    for (const auto& device : m_knownDevices) {
+        if (std::find(added.begin(), added.end(), device) != added.end()) {
+            continue;
+        }
+        const std::wstring label = device + L" [saved]";
+        m_deviceItems.push_back(label);
+        m_deviceComboItems.push_back({label, m_deviceItems.size() - 1, false});
+        if (!currentSelection.empty() && currentSelection == label) {
+            selected = static_cast<int>(m_deviceItems.size() - 1);
+            matchedCurrentSelection = true;
+        }
+    }
+    m_deviceItems.push_back(L"\x6DFB\x52A0\x8BBE\x5907");
+    m_deviceComboItems.push_back({m_deviceItems.back(), m_deviceItems.size() - 1, true});
+    if (!matchedCurrentSelection && !result->devices.empty()) {
+        selected = 1;
+    }
+    m_selectedDeviceIndex = selected;
+    m_deviceComboControl.SetItems(m_deviceComboItems);
+    m_deviceComboControl.SetSelection(m_selectedDeviceIndex, false);
+    return 0;
+}
+
 LRESULT MainWindow::HandleDeviceConnectResultMessage(LPARAM lParam) {
     std::unique_ptr<DeviceConnectResult> result(reinterpret_cast<DeviceConnectResult*>(lParam));
     SetDeviceConnectInProgress(false);
@@ -1600,7 +1669,7 @@ LRESULT MainWindow::HandleDeviceConnectResultMessage(LPARAM lParam) {
 
     if (result->success) {
         SaveKnownDevice(result->address);
-        RefreshDevices(false);
+        BeginRefreshDevices(false);
         const int connectedIndex = FindDeviceIndexBySerial(result->address);
         if (connectedIndex >= 0) {
             m_selectedDeviceIndex = connectedIndex;
@@ -1628,7 +1697,7 @@ LRESULT MainWindow::HandleDeviceConnectResultMessage(LPARAM lParam) {
     } else {
         RemoveKnownDevice(result->address);
         m_startAfterDeviceConnect = false;
-        RefreshDevices(false);
+        BeginRefreshDevices(false);
         m_deviceComboControl.SetSelection(m_selectedDeviceIndex, false);
         MessageBoxW(m_hWnd, result->status.c_str(), L"\x8FDE\x63A5\x8BBE\x5907\x5931\x8D25", MB_OK | MB_ICONERROR);
     }

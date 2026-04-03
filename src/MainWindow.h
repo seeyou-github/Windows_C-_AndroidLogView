@@ -47,6 +47,7 @@ private:
     void OnSettings();
     void OnFilterRulesHelp();
     void BeginToolbarAdbCommand(int commandId, const std::wstring& arguments, const std::wstring& actionName);
+    void BeginRefreshDevices(bool keepSelection);
     void SetToolbarCommandInProgress(bool inProgress);
     void RestartAdbCaptureForSelection();
     void RefreshDevices(bool keepSelection);
@@ -91,6 +92,7 @@ private:
     LRESULT HandleCustomDraw(NMLVCUSTOMDRAW* drawInfo);
     INT_PTR HandleControlColor(HDC hdc, HWND control);
     LRESULT HandleAppStatusMessage(LPARAM lParam);
+    LRESULT HandleDeviceListResultMessage(LPARAM lParam);
     LRESULT HandleDeviceConnectResultMessage(LPARAM lParam);
     LRESULT HandleToolbarAdbCommandResultMessage(LPARAM lParam);
     LRESULT HandleDrawItem(WPARAM wParam, LPARAM lParam);
